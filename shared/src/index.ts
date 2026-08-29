@@ -99,6 +99,61 @@ export interface AccountSessionResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Organizations (families and companies)
+// ---------------------------------------------------------------------------
+
+export type OrganizationKindName = "family" | "organization";
+
+export type OrganizationRoleName = "owner" | "admin" | "member";
+
+export interface CreateOrganizationRequest {
+  kind: OrganizationKindName;
+  name: string;
+}
+
+export interface AddMemberRequest {
+  email: string;
+  role: OrganizationRoleName;
+}
+
+export interface ChangeMemberRoleRequest {
+  role: OrganizationRoleName;
+}
+
+export interface OrganizationMemberResponse {
+  accountId: string;
+  displayName: string;
+  role: OrganizationRoleName;
+  /** ISO-8601 UTC instant. */
+  joinedAt: string;
+  /** Present only for viewers who may manage members. */
+  email?: string;
+}
+
+export interface OrganizationSummaryResponse {
+  organizationId: string;
+  kind: OrganizationKindName;
+  name: string;
+  slug: string;
+  /** The caller's own role in this organization. */
+  role: OrganizationRoleName;
+  memberCount: number;
+}
+
+export interface OrganizationListResponse {
+  organizations: OrganizationSummaryResponse[];
+}
+
+export interface OrganizationResponse {
+  organizationId: string;
+  kind: OrganizationKindName;
+  name: string;
+  slug: string;
+  role: OrganizationRoleName;
+  members: OrganizationMemberResponse[];
+}
+
+// ---------------------------------------------------------------------------
 // Profiles (tenant-scoped reads)
 // ---------------------------------------------------------------------------
 

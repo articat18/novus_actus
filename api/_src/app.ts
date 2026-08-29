@@ -18,6 +18,7 @@ import {
   InMemoryEmailCodeSender,
   type EmailCodeSender,
 } from "./modules/identity/ports.js";
+import { createOrganizationsRouter } from "./modules/organizations/router.js";
 import type { UniversityVerificationGateway } from "./modules/university/contracts.js";
 import { HttpUniversityGateway } from "./modules/university/http-gateway.js";
 import { InProcessUniversityGateway } from "./modules/university/roster-gateway.js";
@@ -85,6 +86,13 @@ export function createApp(options: CreateAppOptions = {}): Express {
       clock: options.clock,
       codeFactory: options.codeFactory,
       tokenFactory: options.tokenFactory,
+    }),
+  );
+  app.use(
+    "/api/v1",
+    createOrganizationsRouter(db, {
+      sessionHmacKey: config.sessionHmacKey,
+      clock: options.clock,
     }),
   );
   app.use("/api/v1/verification", createVerificationRouter(db));
