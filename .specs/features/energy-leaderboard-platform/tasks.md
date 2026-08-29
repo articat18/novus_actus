@@ -207,7 +207,7 @@ flowchart TD
 
 ### Competition and query lane
 
-- [ ] **T014 — Implement university-local competition windows**
+- [x] **T014 — Implement university-local competition windows**
   - **Owner:** Engineer 4
   - **Depends on:** T001
   - **Requirements:** REQ-COMP-001
