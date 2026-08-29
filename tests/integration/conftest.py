@@ -4,7 +4,7 @@ import os
 from collections.abc import Iterator
 
 import pytest
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
 from platform_app.modules.identity import models as identity_models
@@ -18,6 +18,8 @@ def postgres_engine() -> Iterator[Engine]:
         pytest.skip("TEST_DATABASE_URL is required for PostgreSQL integration tests")
 
     engine = create_engine(database_url)
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS btree_gist"))
     Base.metadata.drop_all(engine)
     Base.metadata.create_all(engine)
     yield engine

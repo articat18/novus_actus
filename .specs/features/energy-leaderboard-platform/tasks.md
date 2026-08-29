@@ -122,7 +122,7 @@ flowchart TD
 
 ### Topology and ingestion lane
 
-- [ ] **T005 — Model dorm topology and effective physical assignments**
+- [x] **T005 — Model dorm topology and effective physical assignments**
   - **Owner:** Engineer 2
   - **Depends on:** T002
   - **Requirements:** REQ-TOP-001

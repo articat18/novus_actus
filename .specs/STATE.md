@@ -16,11 +16,11 @@
 
 ## Handoff
 
-- **Branch:** `agent/e1-foundation`, derived from `conrad` at `6d97eee`.
+- **Branch:** `agent/e2-ingestion`, derived from `conrad` at `af7dbda`.
 - **Feature:** `energy-leaderboard-platform`
 - **Current phase:** Execute, Wave 1.
-- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation.
+- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation; T005 — dorm topology and effective assignments.
 - **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation` (created with this state update).
-- **T002 gate evidence:** PostgreSQL migration upgrade/downgrade/upgrade and `alembic check` passed; `ruff format --check` passed for 39 files; `ruff check` passed; `mypy src tests` passed for 30 source files; `pytest` passed 9 tests, including 4 PostgreSQL integration tests.
-- **Implementation scope:** Tenant, account, profile, role, and audit persistence; UUID/UTC/decimal/transaction conventions; deny-by-default tenant repository access; explicit audited platform-tenant override.
-- **Next step:** Execute T003 against the independently owned pseudo-university service and database.
+- **T005 gate evidence:** PostgreSQL topology constraint suite passes 4 tests covering multi-room/multi-fuse apartments, overlap rejection, exact boundaries, tenant isolation, and historical resolution; migration and static gates pass.
+- **Implementation scope:** Tenant-qualified dorm topology plus PostgreSQL-enforced, half-open effective fuse-box and meter assignment histories.
+- **Next step:** Execute T006 for independently revocable meter credentials.
