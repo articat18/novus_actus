@@ -11,6 +11,7 @@ import { loadConfig, type Config } from "./config.js";
 import { prisma } from "./db.js";
 import { createDevInboxRouter } from "./dev.js";
 import { errorHandler } from "./http.js";
+import { createAccountsRouter } from "./modules/accounts/router.js";
 import { createAdministrationRouter } from "./modules/administration/router.js";
 import { createIdentityRouter } from "./modules/identity/router.js";
 import {
@@ -66,6 +67,14 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }
   });
 
+  app.use(
+    "/api/v1",
+    createAccountsRouter(db, {
+      sessionHmacKey: config.sessionHmacKey,
+      clock: options.clock,
+      tokenFactory: options.tokenFactory,
+    }),
+  );
   app.use(
     "/api/v1",
     createIdentityRouter(db, {
