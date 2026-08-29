@@ -18,11 +18,12 @@
 
 - **Branch:** `conrad`.
 - **Feature:** `energy-leaderboard-platform`
-- **Current phase:** Execute, Wave 1.
+- **Current phase:** Paused during Execute, Wave 1, at user request.
 - **Completed tasks:** T001 — service foundation; T002 — tenant persistence; T003 — isolated university service; T004 — passwordless resident identity and roles; T014 — university-local cumulative competition windows.
 - **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation`; `feat(university): add isolated roster verification service`; `feat(identity): verify university residents and issue scoped access`; `feat(competition): define local cumulative comparison windows`.
 - **T004 gate evidence:** Platform migrations upgraded/downgraded/upgraded with `alembic check` reporting no drift; dependency lock, format, lint, and strict type gates passed; cumulative `pytest` passed 30 tests, including 10 identity API/PostgreSQL tests and 4 deny-by-default role-matrix tests.
 - **T014 gate evidence:** Formatting, lint, and strict type gates passed; cumulative `pytest` passed 19 tests on its branch, including 14 deterministic competition-window tests.
 - **Window evidence:** Tests cover Monday and Thursday cutoffs, inclusive starts/exclusive ends, three IANA timezones including a half-hour offset, 167-hour DST-gap and 169-hour DST-fold weeks, and year/semester boundaries without database access.
-- **Implementation scope:** Identity, pseudo-university verification, and pure competition windows are integrated. Topology/ingestion is active; residence, usage, scoring, persistence, scheduling, and client APIs remain downstream.
-- **Next step:** Complete and integrate T005–T009, then release residence and usage tasks when their prerequisites land.
+- **Pause state:** All agents interrupted or complete; all tests paused; `novus-actus-test-postgres` stopped without deletion; Engineer 2 uncommitted T008 work preserved.
+- **Detailed handoff:** `.specs/HANDOFF.md` is the source of truth for worktrees, unintegrated commits, open gate findings, and resume order.
+- **Next step:** Do not run tests or resume implementation until the user explicitly requests it. Resume Engineer 2 in place with T008.
