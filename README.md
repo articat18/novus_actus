@@ -28,7 +28,8 @@ api/            Express app → Vercel serverless function
   index.ts        the function entry (imports the app)
   _src/           application code (underscore = not a Vercel endpoint)
     app.ts          createApp() factory (injectable deps)
-    modules/        identity · university · competition · <stubs>
+    modules/        accounts · organizations · identity · university ·
+                    competition · <stubs>
     ...
 web/            React + Vite SPA (the browser client)
 shared/         framework-free contract types (used by api + web)
@@ -69,13 +70,23 @@ npm run db:seed          # deterministic demo data
 schema without the hand-authored CHECK constraints. `npm run prisma:studio`
 opens a data browser.
 
-Seeded accounts:
+Seeded accounts — email + password (the primary sign-in route):
+
+| Email | Password | Outcome |
+|---|---|---|
+| `sam@demo.family` | `demo-password-2026` | owner of "The Demo Family" |
+| `kim@demo.family` | `demo-password-2026` | member of the same family |
+
+Seeded roster addresses — passwordless university demo:
 
 | Email | Outcome |
 |---|---|
 | `active@demo.edu` | active enrolment + residence → can participate |
 | `inactive@demo.edu` | inactive enrolment → roster-ineligible |
 | `unknown@demo.edu` | not on the roster → not found |
+
+The seeded password is demo-only and must never be seeded into a real
+deployment.
 
 ## Run locally
 
@@ -85,6 +96,10 @@ npm run dev
 
 - Web SPA: http://localhost:5173
 - API: http://localhost:3001 (the SPA proxies `/api` here)
+
+The SPA opens on **Accounts & groups** (email + password sign-in, then create a
+family or organization and manage its members). The **University demo** tab
+holds the passwordless roster flow.
 
 The demo has no real email integration, so a **development inbox** exposes the
 verification code (`ENABLE_DEV_INBOX=true`) and the UI shows it. Turn it off in
@@ -124,6 +139,14 @@ runtime (`binaryTargets` includes `rhel-openssl-3.0.x`).
 
 **Implemented** (faithful ports of the working Python code, with tests):
 
+- **Email + password accounts** (no OAuth): register, sign in, sign out, and
+  `GET /me`. scrypt from `node:crypto`, so there is no native dependency to
+  build for Vercel; cost parameters travel with each hash so they can be raised
+  later. Sign-in refuses an unknown address and a wrong password identically.
+- **Organizations** for families and companies: owner/admin/member roles,
+  invite by email, self-service leaving, and a deny-by-default matrix. Only an
+  owner may grant the owner role or act on another owner, and an organization
+  always keeps at least one owner.
 - Passwordless university-email identity: OTP challenge, roster-gated
   activation, public usernames, HMAC sessions, role matrix.
 - Deny-by-default authorization **enforced on the live routes** (a valid session

@@ -335,3 +335,120 @@ footer {
 footer a {
   color: var(--brand);
 }
+
+/* --------------------------------------------------------------------------
+   Accounts, groups, and the panel switch
+   -------------------------------------------------------------------------- */
+
+.panel-switch {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
+.panel-switch button,
+.tabs button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font: inherit;
+  padding: 8px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.panel-switch button.active,
+.tabs button.active {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.hint-inline {
+  display: inline-block;
+  margin-top: 6px;
+  opacity: 0.65;
+  font-size: 0.85em;
+}
+
+.org-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.org-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.org-row:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.org-row.active {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.org-name {
+  font-weight: 600;
+}
+
+.org-count {
+  margin-left: auto;
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
+.org-detail {
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+table.members {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0 18px;
+}
+
+table.members td {
+  padding: 10px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  vertical-align: middle;
+}
+
+table.members td:last-child {
+  text-align: right;
+}
+
+select {
+  font: inherit;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+select option {
+  color: #111;
+}

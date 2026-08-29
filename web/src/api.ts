@@ -1,6 +1,15 @@
 import type {
+  AccountResponse,
+  AccountSessionResponse,
+  AddMemberRequest,
   ChallengeResponse,
   ChallengeVerification,
+  ChangeMemberRoleRequest,
+  CreateOrganizationRequest,
+  OrganizationListResponse,
+  OrganizationMemberResponse,
+  OrganizationResponse,
+  OrganizationSummaryResponse,
   SessionResponse,
   UsernameResponse,
 } from "@energy/shared";
@@ -67,6 +76,77 @@ export const api = {
     return request(
       "GET",
       `/api/v1/dev/last-code?email=${encodeURIComponent(email)}`,
+    );
+  },
+};
+
+/**
+ * Email + password accounts and the organization system. Separate from `api`
+ * above, which drives the passwordless university demo.
+ */
+export const accounts = {
+  register(body: {
+    email: string;
+    password: string;
+    displayName: string;
+  }): Promise<AccountSessionResponse> {
+    return request("POST", "/api/v1/auth/register", { body });
+  },
+  login(body: { email: string; password: string }): Promise<AccountSessionResponse> {
+    return request("POST", "/api/v1/auth/login", { body });
+  },
+  logout(token: string): Promise<unknown> {
+    return request("POST", "/api/v1/auth/logout", { token });
+  },
+  me(token: string): Promise<AccountResponse> {
+    return request("GET", "/api/v1/me", { token });
+  },
+};
+
+export const organizations = {
+  list(token: string): Promise<OrganizationListResponse> {
+    return request("GET", "/api/v1/organizations", { token });
+  },
+  create(
+    body: CreateOrganizationRequest,
+    token: string,
+  ): Promise<OrganizationSummaryResponse> {
+    return request("POST", "/api/v1/organizations", { body, token });
+  },
+  detail(organizationId: string, token: string): Promise<OrganizationResponse> {
+    return request("GET", `/api/v1/organizations/${organizationId}`, { token });
+  },
+  addMember(
+    organizationId: string,
+    body: AddMemberRequest,
+    token: string,
+  ): Promise<OrganizationMemberResponse> {
+    return request("POST", `/api/v1/organizations/${organizationId}/members`, {
+      body,
+      token,
+    });
+  },
+  changeRole(
+    organizationId: string,
+    accountId: string,
+    body: ChangeMemberRoleRequest,
+    token: string,
+  ): Promise<OrganizationMemberResponse> {
+    return request(
+      "PATCH",
+      `/api/v1/organizations/${organizationId}/members/${accountId}`,
+      { body, token },
+    );
+  },
+  removeMember(
+    organizationId: string,
+    accountId: string,
+    token: string,
+  ): Promise<unknown> {
+    return request(
+      "DELETE",
+      `/api/v1/organizations/${organizationId}/members/${accountId}`,
+      { token },
     );
   },
 };

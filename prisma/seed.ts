@@ -10,6 +10,12 @@
  *   inactive@demo.edu  -> inactive enrolment            -> roster-ineligible
  *   unknown@demo.edu   -> not on the roster             -> not_found
  *
+ * It also seeds two email+password accounts and a family so the sign-in page
+ * is usable from a fresh database:
+ *
+ *   sam@demo.family / demo-password-2026  -> owner of "The Demo Family"
+ *   kim@demo.family / demo-password-2026  -> member of the same family
+ *
  * The richer ~270-resident demo dataset (spec AC-UNI-001B) is future work,
  * tracked with the still-stubbed modules.
  */
@@ -18,12 +24,22 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { v5 as uuidv5 } from "uuid";
 
+import { hashPassword } from "../api/_src/modules/accounts/password.js";
+
 const prisma = new PrismaClient();
 
 // Same namespace as the original Python seed, so identifiers are stable across
 // the stack migration.
 const SEED_NAMESPACE = "91134630-bb1c-4cb3-8e4f-7836a56f7c74";
 const SEED = 2026;
+
+/** Demo-only password. Never seed this into a real deployment. */
+const DEMO_PASSWORD = "demo-password-2026";
+
+const DEMO_MEMBERS = [
+  { email: "sam@demo.family", displayName: "Sam Tan", role: "owner" },
+  { email: "kim@demo.family", displayName: "Kim Lim", role: "member" },
+] as const;
 
 function seedId(label: string): string {
   return uuidv5(`${SEED}:${label}`, SEED_NAMESPACE);
@@ -166,13 +182,67 @@ async function seedPlatformTenant(): Promise<void> {
   });
 }
 
+/**
+ * Two credential accounts and one family, so the email+password sign-in page
+ * has something to show without registering first.
+ */
+async function seedDemoFamily(): Promise<void> {
+  const passwordHash = await hashPassword(DEMO_PASSWORD);
+  const organizationId = seedId("organization:demo-family");
+
+  await prisma.organization.upsert({
+    where: { id: organizationId },
+    update: {},
+    create: {
+      id: organizationId,
+      kind: "family",
+      name: "The Demo Family",
+      slug: "the-demo-family",
+    },
+  });
+
+  for (const member of DEMO_MEMBERS) {
+    const accountId = seedId(`account:${member.email}`);
+    await prisma.userAccount.upsert({
+      where: { id: accountId },
+      update: {},
+      create: { id: accountId, status: "active" },
+    });
+    await prisma.userCredential.upsert({
+      where: { accountId },
+      update: { displayName: member.displayName, passwordHash },
+      create: {
+        id: seedId(`credential:${member.email}`),
+        accountId,
+        normalizedEmail: member.email,
+        displayName: member.displayName,
+        passwordHash,
+      },
+    });
+    await prisma.organizationMembership.upsert({
+      where: {
+        uq_organization_membership: { organizationId, accountId },
+      },
+      update: { role: member.role },
+      create: {
+        id: seedId(`membership:${member.email}`),
+        organizationId,
+        accountId,
+        role: member.role,
+      },
+    });
+  }
+}
+
 async function main(): Promise<void> {
   await seedRoster();
   await seedPlatformTenant();
+  await seedDemoFamily();
   // eslint-disable-next-line no-console
   console.log(
     "Seeded demo tenant + roster. Try active@demo.edu (participates), " +
-      "inactive@demo.edu (ineligible), unknown@demo.edu (not found).",
+      "inactive@demo.edu (ineligible), unknown@demo.edu (not found).\n" +
+      `Sign in with sam@demo.family or kim@demo.family / ${DEMO_PASSWORD}.`,
   );
 }
 
