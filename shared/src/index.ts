@@ -70,6 +70,23 @@ export interface VerificationResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Profiles (tenant-scoped reads)
+// ---------------------------------------------------------------------------
+
+/** Public/own profile fields only. Never carries email or residence. */
+export interface ProfileResponse {
+  profileId: string;
+  username: string;
+  /** ISO-8601 UTC instant. */
+  createdAt: string;
+}
+
+export interface ProfileListResponse {
+  universityId: string;
+  profiles: ProfileResponse[];
+}
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 

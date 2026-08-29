@@ -126,14 +126,18 @@ runtime (`binaryTargets` includes `rhel-openssl-3.0.x`).
 
 - Passwordless university-email identity: OTP challenge, roster-gated
   activation, public usernames, HMAC sessions, role matrix.
-- Deny-by-default authorization and tenant isolation with audit.
-- University-local competition-window math (Monday 08:00 weeks, IANA timezones,
-  DST 167h/169h weeks).
+- Deny-by-default authorization **enforced on the live routes** (a valid session
+  is not authority on its own), tenant-scoped profile reads, and audited
+  cross-tenant access for platform operators.
 - Read-only roster verification.
+- University-local competition-window math (Monday 08:00 weeks, IANA timezones,
+  DST 167h/169h weeks). This is a tested pure library with **no caller yet** —
+  its call site is the unbuilt scoring lane.
 
 **Stubbed** (typed placeholders under `api/_src/modules/`, matching the original
-project's unbuilt lanes): topology, ingestion, usage, administration, archival,
-and the leaderboard/scoring itself. See `.specs/features/energy-leaderboard-platform/`.
+project's unbuilt lanes): topology, ingestion, usage, archival, and the
+leaderboard/scoring itself. `administration` contains only the audited
+cross-tenant profile read. See `.specs/features/energy-leaderboard-platform/`.
 
 ## Notable changes from the Python original
 

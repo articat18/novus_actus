@@ -18,6 +18,16 @@ export function asyncHandler(
   };
 }
 
+/** Extract a Bearer token from the Authorization header, or null if absent. */
+export function bearerToken(req: Request): string | null {
+  const authorization = req.header("authorization");
+  if (authorization === undefined || !authorization.startsWith("Bearer ")) {
+    return null;
+  }
+  const token = authorization.slice("Bearer ".length).trim();
+  return token === "" ? null : token;
+}
+
 /**
  * Terminal error middleware. Returns a generic 500 and logs only the error's
  * name/message (never request bodies, codes, or tokens) per REQ-NFR-002.

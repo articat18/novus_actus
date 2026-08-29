@@ -11,6 +11,7 @@ import { loadConfig, type Config } from "./config.js";
 import { prisma } from "./db.js";
 import { createDevInboxRouter } from "./dev.js";
 import { errorHandler } from "./http.js";
+import { createAdministrationRouter } from "./modules/administration/router.js";
 import { createIdentityRouter } from "./modules/identity/router.js";
 import {
   InMemoryEmailCodeSender,
@@ -78,6 +79,13 @@ export function createApp(options: CreateAppOptions = {}): Express {
     }),
   );
   app.use("/api/v1/verification", createVerificationRouter(db));
+  app.use(
+    "/api/v1/admin",
+    createAdministrationRouter(db, {
+      sessionHmacKey: config.sessionHmacKey,
+      clock: options.clock,
+    }),
+  );
 
   const devInboxEnabled = options.enableDevInbox ?? config.enableDevInbox;
   if (devInboxEnabled && sender instanceof InMemoryEmailCodeSender) {

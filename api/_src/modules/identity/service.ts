@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { RoleName } from "@energy/shared";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, UserProfile } from "@prisma/client";
 
 import {
   digestChallenge,
@@ -19,7 +19,12 @@ import type {
   UniversityVerificationGateway,
   VerifiedResidenceContract,
 } from "../university/contracts.js";
-import type { Principal } from "./authorization.js";
+import { resolvePrincipal } from "./authenticate.js";
+import {
+  AuthorizationService,
+  Permission,
+  type Principal,
+} from "./authorization.js";
 import {
   InvalidChallengeError,
   InvalidSessionError,
@@ -29,6 +34,7 @@ import {
   ChallengeRateLimitError,
 } from "./errors.js";
 import type { EmailCodeSender } from "./ports.js";
+import { IdentityRepository, tenantContext } from "./tenant.js";
 
 const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,24}$/;
 const CHALLENGE_TTL_MS = 10 * 60 * 1000;
@@ -52,12 +58,21 @@ export interface IdentityServiceOptions {
   clock?: () => Date;
   codeFactory?: () => string;
   tokenFactory?: () => string;
+  authorization?: AuthorizationService;
+}
+
+/** The caller's own tenant, identity, and profile, resolved from their session. */
+export interface SelfScope {
+  universityId: string;
+  identityId: string;
+  profileId: string;
 }
 
 export class IdentityService {
   private readonly clock: () => Date;
   private readonly codeFactory: () => string;
   private readonly tokenFactory: () => string;
+  private readonly authorization: AuthorizationService;
 
   constructor(
     private readonly db: PrismaClient,
@@ -70,6 +85,7 @@ export class IdentityService {
     this.clock = options.clock ?? (() => new Date());
     this.codeFactory = options.codeFactory ?? generateCode;
     this.tokenFactory = options.tokenFactory ?? generateToken;
+    this.authorization = options.authorization ?? new AuthorizationService();
   }
 
   async requestChallenge(email: string): Promise<ChallengeIssued> {
@@ -247,32 +263,15 @@ export class IdentityService {
   }
 
   async principalForToken(token: string): Promise<Principal> {
-    const now = this.clock();
-    const accessSession = await this.db.accessSession.findFirst({
-      where: {
-        tokenDigest: digestSession(this.sessionHmacKey, token),
-        revokedAt: null,
-        expiresAt: { gt: now },
-      },
-    });
-    if (accessSession === null) {
-      throw new InvalidSessionError("access token is invalid");
-    }
-    const assignments = await this.db.roleAssignment.findMany({
-      where: { accountId: accessSession.accountId },
-    });
-    return {
-      accountId: accessSession.accountId,
-      grants: assignments.map((row) => ({
-        role: row.role,
-        universityId: row.universityId,
-        buildingId: row.buildingId,
-      })),
-    };
+    return resolvePrincipal(this.db, this.sessionHmacKey, token, this.clock());
   }
 
-  async changeUsername(principal: Principal, username: string): Promise<string> {
-    const normalized = normalizeUsername(username);
+  /**
+   * Resolve the caller's own tenant, identity, and profile from their session.
+   * Throws {@link InvalidSessionError} when the account has no activated
+   * identity or profile.
+   */
+  async selfScope(principal: Principal): Promise<SelfScope> {
     const identity = await this.db.universityIdentity.findFirst({
       where: { accountId: principal.accountId },
     });
@@ -285,18 +284,49 @@ export class IdentityService {
     if (profile === null) {
       throw new InvalidSessionError("participant profile is missing");
     }
+    return {
+      universityId: identity.universityId,
+      identityId: identity.id,
+      profileId: profile.id,
+    };
+  }
+
+  /**
+   * The caller's own profile, read through the tenant-scoped repository so a
+   * profile belonging to another tenant is refused rather than returned.
+   */
+  async ownProfile(principal: Principal): Promise<UserProfile> {
+    const scope = await this.selfScope(principal);
+    this.authorization.require(principal, Permission.VIEW_SELF, {
+      universityId: scope.universityId,
+    });
+    return new IdentityRepository(this.db).getProfile(
+      scope.profileId,
+      tenantContext(scope.universityId, principal.accountId),
+    );
+  }
+
+  async changeUsername(principal: Principal, username: string): Promise<string> {
+    const normalized = normalizeUsername(username);
+    const scope = await this.selfScope(principal);
+    // Deny by default: holding a valid session is not sufficient. The account
+    // must still carry a role granting self access within this tenant, so a
+    // revoked or cross-tenant grant is refused here rather than at the route.
+    this.authorization.require(principal, Permission.VIEW_SELF, {
+      universityId: scope.universityId,
+    });
     const existing = await this.db.userProfile.findFirst({
       where: {
-        universityId: identity.universityId,
+        universityId: scope.universityId,
         normalizedUsername: normalized,
-        id: { not: profile.id },
+        id: { not: scope.profileId },
       },
     });
     if (existing !== null) {
       throw new UsernameUnavailableError("username is unavailable");
     }
     const updated = await this.db.userProfile.update({
-      where: { id: profile.id },
+      where: { id: scope.profileId },
       data: { username, normalizedUsername: normalized },
     });
     return updated.username;

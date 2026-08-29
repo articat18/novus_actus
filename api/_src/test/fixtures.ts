@@ -2,9 +2,10 @@
  * Shared integration-test fixtures: seeding helpers and a fake university
  * gateway / mutable clock (port of the helpers in test_identity_api.py).
  */
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, Role } from "@prisma/client";
 
 import type { Config } from "../config.js";
+import { digestSession } from "../crypto.js";
 import type {
   UniversityVerification,
   UniversityVerificationGateway,
@@ -46,6 +47,44 @@ export async function addUniversity(
     },
   });
   return { id: university.id };
+}
+
+/**
+ * Create an active account holding one role grant plus an open session, and
+ * return the plaintext session token. Used to exercise routes that require a
+ * role the passwordless activation flow never issues (e.g. platform_admin).
+ */
+export async function addAccountWithRole(
+  db: PrismaClient,
+  {
+    role,
+    universityId = null,
+    buildingId = null,
+    token = "role-session-token",
+    now = NOW,
+    ttlMs = 60 * 60 * 1000,
+  }: {
+    role: Role;
+    universityId?: string | null;
+    buildingId?: string | null;
+    token?: string;
+    now?: Date;
+    ttlMs?: number;
+  },
+): Promise<{ accountId: string; token: string }> {
+  const account = await db.userAccount.create({ data: { status: "active" } });
+  await db.roleAssignment.create({
+    data: { accountId: account.id, role, universityId, buildingId },
+  });
+  await db.accessSession.create({
+    data: {
+      accountId: account.id,
+      tokenDigest: digestSession(SESSION_KEY, token),
+      expiresAt: new Date(now.getTime() + ttlMs),
+      createdAt: now,
+    },
+  });
+  return { accountId: account.id, token };
 }
 
 export function activeVerification(
