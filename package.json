@@ -1,0 +1,46 @@
+{
+  "name": "energy-leaderboard-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "University apartment-energy leaderboard backend — Postgres + ERN (Express, React, Node, TypeScript)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "shared",
+    "api",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @energy/api",
+    "dev:web": "npm run dev -w @energy/web",
+    "build": "npm run prisma:generate && npm run build -w @energy/web",
+    "typecheck": "npm run typecheck -w @energy/shared && npm run typecheck -w @energy/api && npm run typecheck -w @energy/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "prisma:migrate:dev": "prisma migrate dev",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "db:seed": "prisma db seed",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.1.0",
+    "prisma": "^5.22.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "uuid": "^11.0.3",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.22.0"
+  }
+}

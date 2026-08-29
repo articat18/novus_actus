@@ -1,0 +1,17 @@
+# Copy this file to `local.properties` and fill in your values.
+# `local.properties` is git-ignored so your credentials never get committed.
+
+# --- Android SDK location (required to build) ---
+sdk.dir=/Users/you/Library/Android/sdk
+
+# --- External Postgres connection ---
+# When running in the Android emulator, 10.0.2.2 points at the host machine's
+# localhost. For a cloud database (Supabase / Neon / Railway / RDS) use the host
+# they give you and set DB_SSLMODE=require.
+DB_HOST=10.0.2.2
+DB_PORT=5432
+DB_NAME=novus_actus
+DB_USER=postgres
+DB_PASSWORD=postgres
+# "disable" for a local Postgres, "require" for most managed cloud databases.
+DB_SSLMODE=disable

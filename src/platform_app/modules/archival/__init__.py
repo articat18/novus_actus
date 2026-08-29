@@ -1,1 +1,0 @@
-"""Verified semester-archive boundary."""

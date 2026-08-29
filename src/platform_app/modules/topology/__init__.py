@@ -1,1 +1,0 @@
-"""University dorm topology boundary."""

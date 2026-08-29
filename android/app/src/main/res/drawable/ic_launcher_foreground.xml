@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Lightning bolt: the "act that intervenes". White on the purple background. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M61.5,26 L40,58 L53,58 L46.5,84 L70,50 L56,50 Z" />
+    <!-- Small orbiting spark to hint at "novus" (new). -->
+    <path
+        android:fillColor="#FFD166"
+        android:pathData="M74,34 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+</vector>
