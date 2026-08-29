@@ -29,6 +29,9 @@ export function testDb(): PrismaClient {
 // Order is irrelevant because TRUNCATE ... CASCADE clears dependents.
 const TABLES = [
   "access_session",
+  "organization_membership",
+  "organization",
+  "user_credential",
   "email_challenge",
   "verified_residence",
   "role_assignment",

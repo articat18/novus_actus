@@ -50,6 +50,20 @@ enum Role {
   platform_admin
 }
 
+/// A family and a company differ only in how members talk about them, so one
+/// table serves both. Universities keep their own table (they carry a roster
+/// reference and a timezone that organizations do not).
+enum OrganizationKind {
+  family
+  organization
+}
+
+enum OrganizationRole {
+  owner
+  admin
+  member
+}
+
 // ---------------------------------------------------------------------------
 // Platform context
 // ---------------------------------------------------------------------------
@@ -99,7 +113,9 @@ model UserAccount {
   identities      UniversityIdentity[]
   roleAssignments RoleAssignment[]
   sessions        AccessSession[]
-  auditEvents     AuditEvent[]         @relation("AuditActor")
+  auditEvents     AuditEvent[]             @relation("AuditActor")
+  credential      UserCredential?
+  memberships     OrganizationMembership[]
 
   @@map("user_account")
 }
@@ -138,8 +154,8 @@ model UserProfile {
   updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   version            Int             @default(1)
 
-  university University          @relation(fields: [universityId], references: [id], onDelete: Cascade)
-  identity   UniversityIdentity  @relation(fields: [identityId], references: [id], onDelete: Cascade)
+  university University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
+  identity   UniversityIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
 
   @@unique([universityId, normalizedUsername], name: "uq_user_profile_university_username")
   @@index([universityId])
@@ -237,6 +253,64 @@ model VerifiedResidence {
   @@index([identityId])
   @@index([universityId])
   @@map("verified_residence")
+}
+
+// ---------------------------------------------------------------------------
+// Credentials and organizations (email + password, families and companies)
+// ---------------------------------------------------------------------------
+
+/// Email + password login for an account. Separate from UniversityIdentity so
+/// the two sign-in routes stay independent: an account may have a credential, a
+/// university identity, or both. The email is globally unique because it is the
+/// login identifier, not a tenant-scoped attribute.
+model UserCredential {
+  id              String   @id @default(uuid()) @db.Uuid
+  accountId       String   @unique @map("account_id") @db.Uuid
+  normalizedEmail String   @unique @map("normalized_email") @db.VarChar(320)
+  displayName     String   @map("display_name") @db.VarChar(80)
+  /// Versioned KDF output, e.g. `scrypt$N$r$p$salt$hash`. Never a bare digest.
+  passwordHash    String   @map("password_hash") @db.VarChar(255)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  version         Int      @default(1)
+
+  account UserAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@map("user_credential")
+}
+
+model Organization {
+  id        String           @id @default(uuid()) @db.Uuid
+  kind      OrganizationKind
+  name      String           @db.VarChar(120)
+  /// Normalized, url-safe form of the name. Unique so members can be invited to
+  /// an unambiguous organization.
+  slug      String           @unique @db.VarChar(120)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  version   Int              @default(1)
+
+  memberships OrganizationMembership[]
+
+  @@map("organization")
+}
+
+model OrganizationMembership {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  accountId      String           @map("account_id") @db.Uuid
+  role           OrganizationRole
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  version        Int              @default(1)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      UserAccount  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, accountId], name: "uq_organization_membership")
+  @@index([accountId])
+  @@index([organizationId])
+  @@map("organization_membership")
 }
 
 // ---------------------------------------------------------------------------
