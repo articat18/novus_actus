@@ -19,8 +19,8 @@
 - **Branch:** `agent/e1-foundation`, derived from `conrad` at `6d97eee`.
 - **Feature:** `energy-leaderboard-platform`
 - **Current phase:** Execute, Wave 1.
-- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation.
-- **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation` (created with this state update).
-- **T002 gate evidence:** PostgreSQL migration upgrade/downgrade/upgrade and `alembic check` passed; `ruff format --check` passed for 39 files; `ruff check` passed; `mypy src tests` passed for 30 source files; `pytest` passed 9 tests, including 4 PostgreSQL integration tests.
-- **Implementation scope:** Tenant, account, profile, role, and audit persistence; UUID/UTC/decimal/transaction conventions; deny-by-default tenant repository access; explicit audited platform-tenant override.
-- **Next step:** Execute T003 against the independently owned pseudo-university service and database.
+- **Completed tasks:** T001 — service foundation; T002 — tenant persistence; T003 — isolated pseudo-university service.
+- **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation`; `feat(university): add isolated roster verification service` (created with this state update).
+- **T003 gate evidence:** Independent pseudo-university migration upgrade/downgrade/upgrade and `alembic check` passed; `ruff format --check` passed for 48 files; `ruff check` passed; `mypy src tests` passed for 38 source files; cumulative `pytest` passed 16 tests, including 7 pseudo-university API/contract/boundary tests.
+- **Implementation scope:** Separate roster database metadata and migration lineage; effective enrolment/residence models; deterministic seed interface; GET-only verification API; platform-owned gateway contract and HTTP adapter; enforced no-import persistence boundary.
+- **Next step:** Execute T004 using the tenant persistence and roster-verification contract.

@@ -102,7 +102,7 @@ flowchart TD
   - **Gate:** Identity persistence integration suite passes against PostgreSQL.
   - **Commit:** `feat(identity): add tenant-aware persistence foundation`
 
-- [ ] **T003 — Build the isolated pseudo-university service**
+- [x] **T003 — Build the isolated pseudo-university service**
   - **Owner:** Engineer 1
   - **Depends on:** T001
   - **Requirements:** REQ-UNI-001

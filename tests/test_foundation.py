@@ -58,7 +58,7 @@ def test_university_configuration_rejects_missing_database_url(
     ("config_path", "expected_heads"),
     [
         ("migrations/platform.ini", ["20260829_0001"]),
-        ("migrations/pseudo_university.ini", []),
+        ("migrations/pseudo_university.ini", ["20260829_uni_0001"]),
     ],
 )
 def test_migration_entry_point_is_discoverable(

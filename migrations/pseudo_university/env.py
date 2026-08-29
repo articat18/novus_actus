@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from pseudo_university_app.persistence import Base
+from pseudo_university_app.persistence import models as roster_models
 from pseudo_university_app.settings import PseudoUniversitySettings
 
 config = context.config
@@ -14,6 +15,8 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", PseudoUniversitySettings().database_url)
 target_metadata = Base.metadata
+
+assert roster_models is not None
 
 
 def run_migrations_offline() -> None:
