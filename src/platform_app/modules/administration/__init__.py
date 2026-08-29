@@ -1,0 +1,1 @@
+"""Role-scoped administration boundary."""

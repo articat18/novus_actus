@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "energy-leaderboard-platform"
+version = "0.1.0"
+description = "University apartment-energy leaderboard backend"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "alembic==1.19.1",
+    "fastapi==0.141.1",
+    "psycopg[binary]==3.3.4",
+    "pydantic-settings==2.15.0",
+    "sqlalchemy==2.0.52",
+    "uvicorn==0.52.4",
+]
+
+[dependency-groups]
+dev = [
+    "mypy==2.3.1",
+    "pytest==9.1.1",
+    "ruff==0.16.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platform_app", "src/pseudo_university_app"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+packages = ["platform_app", "pseudo_university_app"]
+mypy_path = "src"
+plugins = ["pydantic.mypy"]

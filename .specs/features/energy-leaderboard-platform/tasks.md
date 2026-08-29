@@ -84,7 +84,7 @@ flowchart TD
 
 ### Foundation and identity lane
 
-- [ ] **T001 — Create the reproducible Python service foundation**
+- [x] **T001 — Create the reproducible Python service foundation**
   - **Owner:** Engineer 1
   - **Depends on:** None
   - **Requirements:** REQ-NFR-003, REQ-NFR-004, REQ-NFR-005

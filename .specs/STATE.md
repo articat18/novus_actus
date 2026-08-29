@@ -16,12 +16,12 @@
 
 ## Handoff
 
-- **Branch:** `conrad`
+- **Branch:** `agent/e1-foundation`, derived from `conrad` at `6d97eee`.
 - **Feature:** `energy-leaderboard-platform`
-- **Current phase:** Specify, Design, and Tasks proposed; awaiting user approval before Execute.
-- **Confirmed context:** `.specs/features/energy-leaderboard-platform/context.md`
-- **Proposed specification:** `.specs/features/energy-leaderboard-platform/spec.md`
-- **Proposed architecture:** `.specs/features/energy-leaderboard-platform/design.md`
-- **Proposed task plan:** `.specs/features/energy-leaderboard-platform/tasks.md`
-- **Next step:** Obtain explicit approval of the four specification assumptions and execution plan before implementation.
-- **Implementation status:** No feature code or migrations have been written.
+- **Current phase:** Execute, Wave 0.
+- **Completed task:** T001 — reproducible Python service foundation.
+- **Commit:** `build(platform): establish reproducible service foundation` (atomic commit created with this state update).
+- **Gate evidence:** `uv run ruff format --check .` passed for 32 files; `uv run ruff check .` passed; `uv run mypy src tests` passed for 24 source files; `uv run pytest` passed 5 tests.
+- **Migration evidence:** Both Alembic entry points completed an offline `upgrade head --sql` smoke run.
+- **Implementation scope:** Package/configuration foundations, module-boundary skeletons, independent migration entry points, dependency lock, and smoke tests only; no feature behavior was introduced.
+- **Next step:** Tech Lead integrates T001 into `conrad`, runs the cumulative gate, then releases T002, T003, T005, and T014 according to dependency order.
