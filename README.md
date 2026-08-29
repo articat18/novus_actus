@@ -16,7 +16,12 @@ TypeScript — that runs in the browser and deploys to **Vercel**.
 | Language | TypeScript (strict) |
 | API | Express, deployed as a Vercel serverless function |
 | Web client | React + Vite (SPA) |
+<<<<<<< HEAD
 | Database | MongoDB via **Prisma** (schema + client; `db push`, no SQL migrations) |
+=======
+| Database | PostgreSQL via **Prisma** (schema + migrations + client) |
+| Auth | Email + password (scrypt via `node:crypto`), HMAC session tokens |
+>>>>>>> 407e5f4 (base added)
 | Validation | zod |
 | Dates / timezones | luxon (DST-correct competition weeks) |
 | Tests | Vitest + Supertest |
@@ -49,10 +54,10 @@ vercel.json     build + routing for Vercel
 
 ```bash
 npm install
-cp .env.example .env   # then edit DATABASE_URL and the two HMAC keys
+cp .env.example .env   # then edit DATABASE_URL and SESSION_HMAC_KEY
 ```
 
-Generate two random HMAC keys:
+Generate a random HMAC key:
 
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
@@ -78,13 +83,15 @@ however, is MongoDB's default for unique indexes (documents with a null/missing
 field already collide), so `@@unique([accountId, role, universityId,
 buildingId])` in `schema.prisma` reproduces it without extra configuration.
 
-Seeded accounts:
+Seeded demo account (email + password sign-in):
 
-| Email | Outcome |
-|---|---|
-| `active@demo.edu` | active enrolment + residence → can participate |
-| `inactive@demo.edu` | inactive enrolment → roster-ineligible |
-| `unknown@demo.edu` | not on the roster → not found |
+| Email | Password | Notes |
+|---|---|---|
+| `demo@demo.edu` | `password123` | ready to sign in |
+
+The roster behind the read-only verification endpoint
+(`GET /api/v1/verification/residents`) also has `active@demo.edu`,
+`inactive@demo.edu`, and `unknown@demo.edu`.
 
 ## Run locally
 
@@ -92,12 +99,11 @@ Seeded accounts:
 npm run dev
 ```
 
-- Web SPA: http://localhost:5173
+- Web SPA: http://localhost:5173 (`/` sign in, `/sign_up` register)
 - API: http://localhost:3001 (the SPA proxies `/api` here)
 
-The demo has no real email integration, so a **development inbox** exposes the
-verification code (`ENABLE_DEV_INBOX=true`) and the UI shows it. Turn it off in
-any real deployment.
+Sign in with the seeded `demo@demo.edu` / `password123`, or create a new account
+on the sign-up page — registration is open to any email address.
 
 ## Test
 
@@ -119,6 +125,7 @@ They push the schema and clear every collection between cases automatically.
 1. Import the repo. `vercel.json` already sets the build command
    (`npm run build`), output directory (`web/dist`), and routes `/api/*` to the
    serverless function.
+<<<<<<< HEAD
 2. Provision a MongoDB Atlas cluster (replica set) and set project
    **Environment Variables**: `DATABASE_URL`, `CHALLENGE_HMAC_KEY`,
    `SESSION_HMAC_KEY`. In Atlas's Network Access tab, add the IPs that need to
@@ -129,6 +136,12 @@ They push the schema and clear every collection between cases automatically.
    `ENABLE_DEV_INBOX` unset (or `false`) in production.
 3. Push the schema to the production database once:
    `DATABASE_URL=<prod> npx prisma db push` (and `npm run db:seed` for the
+=======
+2. Provision Vercel Postgres or Neon and set project **Environment Variables**:
+   `DATABASE_URL` and `SESSION_HMAC_KEY`.
+3. Apply migrations to the production database once:
+   `DATABASE_URL=<prod> npx prisma migrate deploy` (and `npm run db:seed` for the
+>>>>>>> 407e5f4 (base added)
    demo tenant).
 
 `postinstall` runs `prisma generate`, and the client is built for Vercel's
@@ -136,10 +149,10 @@ runtime (`binaryTargets` includes `rhel-openssl-3.0.x`).
 
 ## Implemented vs. stubbed
 
-**Implemented** (faithful ports of the working Python code, with tests):
+**Implemented** (with tests):
 
-- Passwordless university-email identity: OTP challenge, roster-gated
-  activation, public usernames, HMAC sessions, role matrix.
+- Email + password identity: open registration, sign-in, scrypt password
+  hashing, HMAC session tokens, `GET /auth/me`, sign-out, and the role matrix.
 - Deny-by-default authorization and tenant isolation with audit.
 - University-local competition-window math (Monday 08:00 weeks, IANA timezones,
   DST 167h/169h weeks).
@@ -151,6 +164,15 @@ and the leaderboard/scoring itself. See `.specs/features/energy-leaderboard-plat
 
 ## Notable changes from the Python original
 
+- **Email + password auth replaces the passwordless OTP flow.** The former
+  university-email OTP challenge/verify, roster-gated activation, public
+  usernames, and the demo "dev inbox" were removed. The web app is now a
+  sign-in page at `/` and a sign-up page at `/sign_up`; registration is open to
+  any email. The university roster stays in the database and remains queryable
+  read-only through the verification module.
+- **A move to MongoDB Atlas is planned.** The auth layer stores passwords as a
+  portable scrypt string and avoids Postgres-specific features, to ease that
+  migration.
 - **Two services merged into one app.** The pseudo-university is now an internal
   route group + roster tables in the same database, reached only through
   `UniversityVerificationGateway`. Set `UNIVERSITY_GATEWAY=http` to call a

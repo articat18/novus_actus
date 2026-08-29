@@ -1,185 +1,174 @@
 /**
- * Passwordless identity HTTP API (port of identity.api).
+ * Email + password identity HTTP API.
  *
  * Routes (mounted under /api/v1):
- *   POST  /auth/challenges          -> 202 issue a verification code
- *   POST  /auth/challenges/verify   -> 200 verify and open a session
- *   PATCH /me/username              -> 200 change the public username
+ *   POST /auth/sign-up   -> 201 create an account and open a session
+ *   POST /auth/sign-in   -> 200 verify credentials and open a session
+ *   GET  /auth/me        -> 200 the current account for a bearer token
+ *   POST /auth/sign-out  -> 204 revoke the current session
  */
-import type {
-  ChallengeResponse,
-  SessionResponse,
-  UsernameResponse,
-} from "@energy/shared";
+import type { AuthUser, SessionResponse } from "@energy/shared";
 import type { PrismaClient } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
 import { asyncHandler } from "../../http.js";
-import type { UniversityVerificationGateway } from "../university/contracts.js";
 import {
-  ChallengeRateLimitError,
-  InvalidChallengeError,
+  EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
   InvalidSessionError,
-  RosterIneligibleError,
-  UniversityDomainError,
-  UsernameUnavailableError,
 } from "./errors.js";
-import type { EmailCodeSender } from "./ports.js";
-import { IdentityService } from "./service.js";
+import {
+  AuthService,
+  type AuthenticatedUser,
+  type IssuedSession,
+} from "./service.js";
 
-export interface IdentityRuntime {
-  gateway: UniversityVerificationGateway;
-  sender: EmailCodeSender;
-  challengeHmacKey: string;
+export interface AuthRuntime {
   sessionHmacKey: string;
   clock?: () => Date;
-  codeFactory?: () => string;
   tokenFactory?: () => string;
 }
 
-const ChallengeRequestSchema = z
-  .object({ email: z.string().min(3).max(320) })
-  .strict();
-
-const ChallengeVerificationSchema = z
+const SignUpSchema = z
   .object({
-    challengeId: z.string().uuid(),
-    code: z.string().regex(/^[0-9]{6}$/),
-    username: z.string(),
+    email: z.string().email().max(320),
+    name: z.string().trim().min(1).max(120),
+    password: z.string().min(8).max(200),
   })
   .strict();
 
-const UsernameChangeSchema = z.object({ username: z.string() }).strict();
+// Sign-in stays permissive on shape (no `.email()`); the service rejects bad
+// credentials with a single generic 401 that does not reveal the reason.
+const SignInSchema = z
+  .object({
+    email: z.string().min(3).max(320),
+    password: z.string().min(1).max(200),
+  })
+  .strict();
 
-export function createIdentityRouter(
+export function createAuthRouter(
   db: PrismaClient,
-  runtime: IdentityRuntime,
+  runtime: AuthRuntime,
 ): Router {
   const router = Router();
-  const newService = (): IdentityService =>
-    new IdentityService(
-      db,
-      runtime.gateway,
-      runtime.sender,
-      runtime.challengeHmacKey,
-      runtime.sessionHmacKey,
-      {
-        clock: runtime.clock,
-        codeFactory: runtime.codeFactory,
-        tokenFactory: runtime.tokenFactory,
-      },
-    );
+  const newService = (): AuthService =>
+    new AuthService(db, runtime.sessionHmacKey, {
+      clock: runtime.clock,
+      tokenFactory: runtime.tokenFactory,
+    });
 
   router.post(
-    "/auth/challenges",
+    "/auth/sign-up",
     asyncHandler(async (req, res) => {
-      const parsed = ChallengeRequestSchema.safeParse(req.body);
+      const parsed = SignUpSchema.safeParse(req.body);
       if (!parsed.success) {
-        res.status(422).json({ error: "invalid request", detail: issue(parsed.error) });
+        res
+          .status(422)
+          .json({ error: "invalid request", detail: issue(parsed.error) });
         return;
       }
       try {
-        const issued = await newService().requestChallenge(parsed.data.email);
-        const body: ChallengeResponse = {
-          challengeId: issued.challengeId,
-          expiresAt: issued.expiresAt.toISOString(),
-          message: "A verification code has been sent to the eligible address.",
-        };
-        res.status(202).json(body);
+        const issued = await newService().signUp(parsed.data);
+        res.status(201).json(sessionBody(issued));
       } catch (error) {
-        if (error instanceof UniversityDomainError) {
-          res.status(422).json({ error: error.message });
-          return;
-        }
-        if (error instanceof ChallengeRateLimitError) {
-          res.status(429).json({ error: error.message });
-          return;
-        }
-        throw error;
-      }
-    }),
-  );
-
-  router.post(
-    "/auth/challenges/verify",
-    asyncHandler(async (req, res) => {
-      const parsed = ChallengeVerificationSchema.safeParse(req.body);
-      if (!parsed.success) {
-        res.status(422).json({ error: "invalid request", detail: issue(parsed.error) });
-        return;
-      }
-      try {
-        const activated = await newService().verifyChallenge(
-          parsed.data.challengeId,
-          parsed.data.code,
-          parsed.data.username,
-        );
-        const body: SessionResponse = {
-          accessToken: activated.accessToken,
-          tokenType: "bearer",
-          expiresAt: activated.expiresAt.toISOString(),
-          username: activated.username,
-          roles: activated.roles,
-        };
-        res.status(200).json(body);
-      } catch (error) {
-        if (error instanceof InvalidChallengeError) {
-          res.status(400).json({ error: error.message });
-          return;
-        }
-        if (error instanceof RosterIneligibleError) {
-          res.status(403).json({ error: error.message });
-          return;
-        }
-        if (error instanceof UsernameUnavailableError) {
+        if (error instanceof EmailAlreadyRegisteredError) {
           res.status(409).json({ error: error.message });
           return;
         }
+        if (error instanceof InvalidCredentialsError) {
+          res.status(422).json({ error: error.message });
+          return;
+        }
         throw error;
       }
     }),
   );
 
-  router.patch(
-    "/me/username",
+  router.post(
+    "/auth/sign-in",
     asyncHandler(async (req, res) => {
-      const authorization = req.header("authorization");
-      if (authorization === undefined || !authorization.startsWith("Bearer ")) {
-        res.status(401).json({ error: "access token is required" });
-        return;
-      }
-      const parsed = UsernameChangeSchema.safeParse(req.body);
+      const parsed = SignInSchema.safeParse(req.body);
       if (!parsed.success) {
-        res.status(422).json({ error: "invalid request", detail: issue(parsed.error) });
+        res
+          .status(422)
+          .json({ error: "invalid request", detail: issue(parsed.error) });
         return;
       }
       try {
-        const service = newService();
-        const principal = await service.principalForToken(
-          authorization.slice("Bearer ".length),
-        );
-        const username = await service.changeUsername(
-          principal,
-          parsed.data.username,
-        );
-        const body: UsernameResponse = { username };
-        res.status(200).json(body);
+        const issued = await newService().signIn(parsed.data);
+        res.status(200).json(sessionBody(issued));
+      } catch (error) {
+        if (error instanceof InvalidCredentialsError) {
+          res.status(401).json({ error: error.message });
+          return;
+        }
+        throw error;
+      }
+    }),
+  );
+
+  router.get(
+    "/auth/me",
+    asyncHandler(async (req, res) => {
+      const token = bearer(req.header("authorization"));
+      if (token === null) {
+        res.status(401).json({ error: "access token is required" });
+        return;
+      }
+      try {
+        const user = await newService().userForToken(token);
+        res.status(200).json(userBody(user));
       } catch (error) {
         if (error instanceof InvalidSessionError) {
           res.status(401).json({ error: error.message });
           return;
         }
-        if (error instanceof UsernameUnavailableError) {
-          res.status(409).json({ error: error.message });
-          return;
-        }
         throw error;
       }
     }),
   );
 
+  router.post(
+    "/auth/sign-out",
+    asyncHandler(async (req, res) => {
+      const token = bearer(req.header("authorization"));
+      if (token === null) {
+        res.status(401).json({ error: "access token is required" });
+        return;
+      }
+      await newService().signOut(token);
+      res.status(204).end();
+    }),
+  );
+
   return router;
+}
+
+function sessionBody(issued: IssuedSession): SessionResponse {
+  return {
+    accessToken: issued.accessToken,
+    tokenType: "bearer",
+    expiresAt: issued.expiresAt.toISOString(),
+    user: userBody(issued.user),
+  };
+}
+
+function userBody(user: AuthenticatedUser): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    roles: user.roles,
+  };
+}
+
+function bearer(header: string | undefined): string | null {
+  if (header === undefined || !header.startsWith("Bearer ")) {
+    return null;
+  }
+  const token = header.slice("Bearer ".length).trim();
+  return token.length > 0 ? token : null;
 }
 
 function issue(error: z.ZodError): string {

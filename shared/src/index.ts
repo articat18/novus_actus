@@ -14,24 +14,26 @@ export type RoleName = "participant" | "building_admin" | "platform_admin";
 export type VerificationStatusName = "active" | "inactive" | "not_found";
 
 // ---------------------------------------------------------------------------
-// Identity: passwordless challenge / verify / session
+// Identity: email + password authentication
 // ---------------------------------------------------------------------------
 
-export interface ChallengeRequest {
+export interface SignUpRequest {
   email: string;
+  name: string;
+  password: string;
 }
 
-export interface ChallengeResponse {
-  challengeId: string;
-  /** ISO-8601 UTC instant. */
-  expiresAt: string;
-  message: string;
+export interface SignInRequest {
+  email: string;
+  password: string;
 }
 
-export interface ChallengeVerification {
-  challengeId: string;
-  code: string;
-  username: string;
+/** Public account view — never includes the email/password digest secrets. */
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  roles: RoleName[];
 }
 
 export interface SessionResponse {
@@ -39,16 +41,7 @@ export interface SessionResponse {
   tokenType: "bearer";
   /** ISO-8601 UTC instant. */
   expiresAt: string;
-  username: string;
-  roles: RoleName[];
-}
-
-export interface UsernameChange {
-  username: string;
-}
-
-export interface UsernameResponse {
-  username: string;
+  user: AuthUser;
 }
 
 // ---------------------------------------------------------------------------

@@ -139,7 +139,8 @@ label {
 }
 
 input[type="text"],
-input[type="email"] {
+input[type="email"],
+input[type="password"] {
   width: 100%;
   padding: 12px 14px;
   border-radius: 10px;
@@ -334,4 +335,41 @@ footer {
 
 footer a {
   color: var(--brand);
+}
+
+/* Centered sign-in / sign-up layout */
+.auth-shell {
+  max-width: 460px;
+  margin: 0 auto;
+  padding: 64px 20px 80px;
+}
+
+.auth-shell .masthead {
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.auth-card {
+  margin-top: 0;
+}
+
+.home-card {
+  max-width: 640px;
+}
+
+.switch {
+  margin: 18px 2px 0;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.switch a {
+  color: var(--brand);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.switch a:hover {
+  text-decoration: underline;
 }

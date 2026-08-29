@@ -1,8 +1,8 @@
 import type {
-  ChallengeResponse,
-  ChallengeVerification,
+  AuthUser,
   SessionResponse,
-  UsernameResponse,
+  SignInRequest,
+  SignUpRequest,
 } from "@energy/shared";
 
 export class ApiError extends Error {
@@ -47,26 +47,17 @@ async function request<T>(
   return data as T;
 }
 
-export interface DevCode {
-  email: string;
-  code: string;
-  expiresAt: string;
-}
-
 export const api = {
-  requestChallenge(email: string): Promise<ChallengeResponse> {
-    return request("POST", "/api/v1/auth/challenges", { body: { email } });
+  signUp(body: SignUpRequest): Promise<SessionResponse> {
+    return request("POST", "/api/v1/auth/sign-up", { body });
   },
-  verifyChallenge(payload: ChallengeVerification): Promise<SessionResponse> {
-    return request("POST", "/api/v1/auth/challenges/verify", { body: payload });
+  signIn(body: SignInRequest): Promise<SessionResponse> {
+    return request("POST", "/api/v1/auth/sign-in", { body });
   },
-  changeUsername(username: string, token: string): Promise<UsernameResponse> {
-    return request("PATCH", "/api/v1/me/username", { body: { username }, token });
+  me(token: string): Promise<AuthUser> {
+    return request("GET", "/api/v1/auth/me", { token });
   },
-  devCode(email: string): Promise<DevCode> {
-    return request(
-      "GET",
-      `/api/v1/dev/last-code?email=${encodeURIComponent(email)}`,
-    );
+  signOut(token: string): Promise<void> {
+    return request("POST", "/api/v1/auth/sign-out", { token });
   },
 };

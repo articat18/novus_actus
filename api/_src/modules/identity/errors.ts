@@ -1,20 +1,22 @@
 /**
- * Safe authentication errors (port of the IdentityError hierarchy).
+ * Safe authentication errors.
  *
- * Messages are deliberately generic so they can be returned to clients without
- * revealing whether an account or email exists.
+ * Sign-in messages are deliberately generic so they never reveal whether an
+ * account exists or which field was wrong.
  */
 
-export class IdentityError extends Error {
+export class AuthError extends Error {
   constructor(message: string) {
     super(message);
     this.name = new.target.name;
   }
 }
 
-export class UniversityDomainError extends IdentityError {}
-export class ChallengeRateLimitError extends IdentityError {}
-export class InvalidChallengeError extends IdentityError {}
-export class RosterIneligibleError extends IdentityError {}
-export class UsernameUnavailableError extends IdentityError {}
-export class InvalidSessionError extends IdentityError {}
+/** Sign-up with an email that already has an account (409). */
+export class EmailAlreadyRegisteredError extends AuthError {}
+
+/** Wrong email/password, or malformed sign-in input (401). */
+export class InvalidCredentialsError extends AuthError {}
+
+/** Missing, expired, or revoked session token (401). */
+export class InvalidSessionError extends AuthError {}

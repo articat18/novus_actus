@@ -1,268 +1,163 @@
 /**
- * Passwordless activation, sessions, usernames, and principals
- * (port of platform_app.modules.identity.service).
+ * Email + password authentication: sign-up, sign-in, sessions, and principals.
+ *
+ * This replaces the previous passwordless university-email OTP flow. Registration
+ * is open to any valid email address; the university roster is no longer consulted
+ * here (it remains available read-only through the verification module). Session
+ * tokens continue to be opaque and stored only as HMAC-SHA256 digests.
  */
 import { randomUUID } from "node:crypto";
 
 import type { RoleName } from "@energy/shared";
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, UserAccount } from "@prisma/client";
 
 import {
-  digestChallenge,
   digestSession,
-  digestsEqual,
-  generateCode,
   generateToken,
+  hashPassword,
+  verifyPassword,
 } from "../../crypto.js";
-import type { PrismaTransaction } from "../../db.js";
-import type {
-  UniversityVerificationGateway,
-  VerifiedResidenceContract,
-} from "../university/contracts.js";
 import type { Principal } from "./authorization.js";
 import {
-  InvalidChallengeError,
+  EmailAlreadyRegisteredError,
+  InvalidCredentialsError,
   InvalidSessionError,
-  RosterIneligibleError,
-  UniversityDomainError,
-  UsernameUnavailableError,
-  ChallengeRateLimitError,
 } from "./errors.js";
-import type { EmailCodeSender } from "./ports.js";
 
-const USERNAME_PATTERN = /^[A-Za-z0-9_]{3,24}$/;
-const CHALLENGE_TTL_MS = 10 * 60 * 1000;
-const RATE_WINDOW_MS = 15 * 60 * 1000;
-const RATE_LIMIT = 3;
 const SESSION_TTL_MS = 60 * 60 * 1000;
+const MIN_PASSWORD_LENGTH = 8;
+const MAX_NAME_LENGTH = 120;
 
-export interface ChallengeIssued {
-  challengeId: string;
-  expiresAt: Date;
+export interface SignUpInput {
+  email: string;
+  name: string;
+  password: string;
 }
 
-export interface ActivatedSession {
-  accessToken: string;
-  expiresAt: Date;
-  username: string;
+export interface SignInInput {
+  email: string;
+  password: string;
+}
+
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  name: string;
   roles: RoleName[];
 }
 
-export interface IdentityServiceOptions {
-  clock?: () => Date;
-  codeFactory?: () => string;
-  tokenFactory?: () => string;
+export interface IssuedSession {
+  accessToken: string;
+  expiresAt: Date;
+  user: AuthenticatedUser;
 }
 
-export class IdentityService {
+export interface AuthServiceOptions {
+  clock?: () => Date;
+  tokenFactory?: () => string;
+  passwordHasher?: (password: string) => string;
+  passwordVerifier?: (password: string, stored: string) => boolean;
+}
+
+export class AuthService {
   private readonly clock: () => Date;
-  private readonly codeFactory: () => string;
   private readonly tokenFactory: () => string;
+  private readonly hash: (password: string) => string;
+  private readonly verify: (password: string, stored: string) => boolean;
 
   constructor(
     private readonly db: PrismaClient,
-    private readonly gateway: UniversityVerificationGateway,
-    private readonly emailSender: EmailCodeSender,
-    private readonly challengeHmacKey: string,
     private readonly sessionHmacKey: string,
-    options: IdentityServiceOptions = {},
+    options: AuthServiceOptions = {},
   ) {
     this.clock = options.clock ?? (() => new Date());
-    this.codeFactory = options.codeFactory ?? generateCode;
     this.tokenFactory = options.tokenFactory ?? generateToken;
+    this.hash = options.passwordHasher ?? hashPassword;
+    this.verify = options.passwordVerifier ?? verifyPassword;
   }
 
-  async requestChallenge(email: string): Promise<ChallengeIssued> {
-    const [normalizedEmail, domain] = normalizeEmail(email);
-    const university = await this.db.university.findFirst({
-      where: {
-        status: "active",
-        emailDomains: { some: { normalizedDomain: domain } },
-      },
-    });
-    if (university === null || university.rosterReference === null) {
-      throw new UniversityDomainError("email is not eligible for participation");
+  /** Create an account for a new email and open a session. */
+  async signUp({ email, name, password }: SignUpInput): Promise<IssuedSession> {
+    const normalizedEmail = normalizeEmail(email);
+    const displayName = name.trim();
+    if (displayName.length === 0 || displayName.length > MAX_NAME_LENGTH) {
+      throw new InvalidCredentialsError("a name is required");
     }
-
-    const now = this.clock();
-    const recentCount = await this.db.emailChallenge.count({
-      where: {
-        normalizedEmail,
-        createdAt: { gte: new Date(now.getTime() - RATE_WINDOW_MS) },
-      },
-    });
-    if (recentCount >= RATE_LIMIT) {
-      throw new ChallengeRateLimitError("too many verification requests");
-    }
-
-    const challengeId = randomUUID();
-    const code = this.codeFactory();
-    const expiresAt = new Date(now.getTime() + CHALLENGE_TTL_MS);
-    await this.db.emailChallenge.create({
-      data: {
-        id: challengeId,
-        universityId: university.id,
-        normalizedEmail,
-        codeDigest: digestChallenge(this.challengeHmacKey, challengeId, code),
-        expiresAt,
-        attempts: 0,
-        maxAttempts: 5,
-        createdAt: now,
-      },
-    });
-    await this.emailSender.sendCode(normalizedEmail, code, expiresAt);
-    return { challengeId, expiresAt };
-  }
-
-  async verifyChallenge(
-    challengeId: string,
-    code: string,
-    username: string,
-  ): Promise<ActivatedSession> {
-    const now = this.clock();
-    const challenge = await this.db.emailChallenge.findUnique({
-      where: { id: challengeId },
-    });
-    if (
-      challenge === null ||
-      challenge.consumedAt !== null ||
-      challenge.expiresAt.getTime() <= now.getTime() ||
-      challenge.attempts >= challenge.maxAttempts
-    ) {
-      throw new InvalidChallengeError("verification code is invalid");
-    }
-
-    const expectedDigest = digestChallenge(
-      this.challengeHmacKey,
-      challenge.id,
-      code,
-    );
-    if (!digestsEqual(challenge.codeDigest, expectedDigest)) {
-      // Persist the failed attempt even though we reject the request.
-      await this.db.emailChallenge.update({
-        where: { id: challenge.id },
-        data: { attempts: { increment: 1 } },
-      });
-      throw new InvalidChallengeError("verification code is invalid");
-    }
-
-    const verification = await this.gateway.verifyResident(
-      challenge.normalizedEmail,
-      now,
-    );
-    const university = await this.db.university.findUnique({
-      where: { id: challenge.universityId },
-    });
-    if (
-      university === null ||
-      verification.status !== "active" ||
-      verification.residence === null ||
-      verification.studentReference === null ||
-      verification.universityReference !== university.rosterReference
-    ) {
-      await this.db.emailChallenge.update({
-        where: { id: challenge.id },
-        data: { consumedAt: now },
-      });
-      throw new RosterIneligibleError(
-        "active enrolment and residence are required",
+    if (password.length < MIN_PASSWORD_LENGTH) {
+      throw new InvalidCredentialsError(
+        `password must be at least ${MIN_PASSWORD_LENGTH} characters`,
       );
     }
 
-    const normalizedUsername = normalizeUsername(username);
-    const studentReference = verification.studentReference;
-    const residence = verification.residence;
-    const universityId = university.id;
-
-    // Atomic activation: on a username conflict the whole account/identity
-    // creation rolls back (matching the original session.rollback() on 409).
-    return this.db.$transaction(async (tx) => {
-      let identity = await tx.universityIdentity.findFirst({
-        where: { universityId, normalizedEmail: challenge.normalizedEmail },
-      });
-      let accountId: string;
-      if (identity === null) {
-        const account = await tx.userAccount.create({
-          data: { status: "active" },
-        });
-        accountId = account.id;
-        identity = await tx.universityIdentity.create({
-          data: {
-            universityId,
-            accountId: account.id,
-            normalizedEmail: challenge.normalizedEmail,
-            externalStudentReference: studentReference,
-            enrollmentState: "active",
-          },
-        });
-      } else {
-        const existingAccount = await tx.userAccount.findUnique({
-          where: { id: identity.accountId },
-        });
-        if (existingAccount === null || existingAccount.status !== "active") {
-          throw new RosterIneligibleError("account is not active");
-        }
-        accountId = existingAccount.id;
-        identity = await tx.universityIdentity.update({
-          where: { id: identity.id },
-          data: {
-            externalStudentReference: studentReference,
-            enrollmentState: "active",
-          },
-        });
-      }
-
-      const profile = await upsertProfile(
-        tx,
-        identity.id,
-        universityId,
-        username,
-        normalizedUsername,
-      );
-      await upsertParticipantRole(tx, accountId, universityId);
-      await recordResidence(tx, identity.id, universityId, residence, now);
-      await tx.emailChallenge.update({
-        where: { id: challenge.id },
-        data: { consumedAt: now },
-      });
-
-      const token = this.tokenFactory();
-      const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
-      await tx.accessSession.create({
+    const now = this.clock();
+    let account: UserAccount;
+    try {
+      account = await this.db.userAccount.create({
         data: {
-          accountId,
-          tokenDigest: digestSession(this.sessionHmacKey, token),
-          expiresAt,
-          createdAt: now,
+          status: "active",
+          email: normalizedEmail,
+          name: displayName,
+          passwordHash: this.hash(password),
         },
       });
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") {
+        // Unique violation on the email column.
+        throw new EmailAlreadyRegisteredError("email is already registered");
+      }
+      throw error;
+    }
 
-      return {
-        accessToken: token,
-        expiresAt,
-        username: profile.username,
-        roles: ["participant"] satisfies RoleName[],
-      };
-    });
+    const session = await this.openSession(account.id, now);
+    return { ...session, user: toUser(account, []) };
   }
 
-  async principalForToken(token: string): Promise<Principal> {
+  /** Verify an email/password pair and open a session. */
+  async signIn({ email, password }: SignInInput): Promise<IssuedSession> {
     const now = this.clock();
-    const accessSession = await this.db.accessSession.findFirst({
-      where: {
-        tokenDigest: digestSession(this.sessionHmacKey, token),
-        revokedAt: null,
-        expiresAt: { gt: now },
-      },
-    });
-    if (accessSession === null) {
-      throw new InvalidSessionError("access token is invalid");
+    let normalizedEmail: string;
+    try {
+      normalizedEmail = normalizeEmail(email);
+    } catch {
+      // Keep the timing and error identical to a missing account.
+      normalizedEmail = "";
     }
+
+    const account =
+      normalizedEmail === ""
+        ? null
+        : await this.db.userAccount.findUnique({
+            where: { email: normalizedEmail },
+          });
+
+    // Always run the verifier — against a dummy digest when the account is
+    // missing — so response time does not reveal whether the email exists.
+    const stored = account?.passwordHash ?? DUMMY_PASSWORD_HASH;
+    const passwordOk = this.verify(password, stored);
+    if (account === null || account.status !== "active" || !passwordOk) {
+      throw new InvalidCredentialsError("email or password is incorrect");
+    }
+
+    const roles = await this.rolesFor(account.id);
+    const session = await this.openSession(account.id, now);
+    return { ...session, user: toUser(account, roles) };
+  }
+
+  /** The public account view for a valid session token. */
+  async userForToken(token: string): Promise<AuthenticatedUser> {
+    const account = await this.accountForToken(token);
+    const roles = await this.rolesFor(account.id);
+    return toUser(account, roles);
+  }
+
+  /** The authorization principal (account + role grants) for a valid token. */
+  async principalForToken(token: string): Promise<Principal> {
+    const account = await this.accountForToken(token);
     const assignments = await this.db.roleAssignment.findMany({
-      where: { accountId: accessSession.accountId },
+      where: { accountId: account.id },
     });
     return {
-      accountId: accessSession.accountId,
+      accountId: account.id,
       grants: assignments.map((row) => ({
         role: row.role,
         universityId: row.universityId,
@@ -271,146 +166,83 @@ export class IdentityService {
     };
   }
 
-  async changeUsername(principal: Principal, username: string): Promise<string> {
-    const normalized = normalizeUsername(username);
-    const identity = await this.db.universityIdentity.findFirst({
-      where: { accountId: principal.accountId },
-    });
-    if (identity === null) {
-      throw new InvalidSessionError("participant identity is missing");
-    }
-    const profile = await this.db.userProfile.findFirst({
-      where: { identityId: identity.id },
-    });
-    if (profile === null) {
-      throw new InvalidSessionError("participant profile is missing");
-    }
-    const existing = await this.db.userProfile.findFirst({
+  /** Revoke the session behind a token (idempotent). */
+  async signOut(token: string): Promise<void> {
+    const now = this.clock();
+    await this.db.accessSession.updateMany({
       where: {
-        universityId: identity.universityId,
-        normalizedUsername: normalized,
-        id: { not: profile.id },
+        tokenDigest: digestSession(this.sessionHmacKey, token),
+        revokedAt: null,
+      },
+      data: { revokedAt: now },
+    });
+  }
+
+  private async accountForToken(token: string): Promise<UserAccount> {
+    const now = this.clock();
+    const session = await this.db.accessSession.findFirst({
+      where: {
+        tokenDigest: digestSession(this.sessionHmacKey, token),
+        revokedAt: null,
+        expiresAt: { gt: now },
       },
     });
-    if (existing !== null) {
-      throw new UsernameUnavailableError("username is unavailable");
+    if (session === null) {
+      throw new InvalidSessionError("access token is invalid");
     }
-    const updated = await this.db.userProfile.update({
-      where: { id: profile.id },
-      data: { username, normalizedUsername: normalized },
+    const account = await this.db.userAccount.findUnique({
+      where: { id: session.accountId },
     });
-    return updated.username;
+    if (account === null || account.status !== "active") {
+      throw new InvalidSessionError("access token is invalid");
+    }
+    return account;
   }
-}
 
-async function upsertProfile(
-  tx: PrismaTransaction,
-  identityId: string,
-  universityId: string,
-  username: string,
-  normalizedUsername: string,
-) {
-  const conflict = await tx.userProfile.findFirst({
-    where: {
-      universityId,
-      normalizedUsername,
-      identityId: { not: identityId },
-    },
-  });
-  if (conflict !== null) {
-    throw new UsernameUnavailableError("username is unavailable");
+  private async rolesFor(accountId: string): Promise<RoleName[]> {
+    const assignments = await this.db.roleAssignment.findMany({
+      where: { accountId },
+    });
+    return assignments.map((row) => row.role);
   }
-  const existing = await tx.userProfile.findUnique({ where: { identityId } });
-  if (existing === null) {
-    return tx.userProfile.create({
+
+  private async openSession(
+    accountId: string,
+    now: Date,
+  ): Promise<{ accessToken: string; expiresAt: Date }> {
+    const token = this.tokenFactory();
+    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
+    await this.db.accessSession.create({
       data: {
-        universityId,
-        identityId,
-        username,
-        normalizedUsername,
-        moderationState: "active",
+        accountId,
+        tokenDigest: digestSession(this.sessionHmacKey, token),
+        expiresAt,
+        createdAt: now,
       },
     });
-  }
-  return tx.userProfile.update({
-    where: { id: existing.id },
-    data: { username, normalizedUsername },
-  });
-}
-
-async function upsertParticipantRole(
-  tx: PrismaTransaction,
-  accountId: string,
-  universityId: string,
-): Promise<void> {
-  const existing = await tx.roleAssignment.findFirst({
-    where: { accountId, role: "participant", universityId },
-  });
-  if (existing === null) {
-    await tx.roleAssignment.create({
-      data: { accountId, role: "participant", universityId, buildingId: null },
-    });
+    return { accessToken: token, expiresAt };
   }
 }
 
-async function recordResidence(
-  tx: PrismaTransaction,
-  identityId: string,
-  universityId: string,
-  residence: VerifiedResidenceContract,
-  now: Date,
-): Promise<void> {
-  const current = await tx.verifiedResidence.findFirst({
-    where: { identityId, effectiveEnd: null },
-  });
-  if (current !== null) {
-    const unchanged =
-      current.buildingReference === residence.buildingReference &&
-      current.apartmentReference === residence.apartmentReference &&
-      current.roomReference === residence.roomReference &&
-      current.sourceVersion === residence.sourceVersion;
-    if (unchanged) {
-      await tx.verifiedResidence.update({
-        where: { id: current.id },
-        data: { verifiedAt: now },
-      });
-      return;
-    }
-    await tx.verifiedResidence.update({
-      where: { id: current.id },
-      data: { effectiveEnd: now },
-    });
-  }
-  await tx.verifiedResidence.create({
-    data: {
-      universityId,
-      identityId,
-      buildingReference: residence.buildingReference,
-      apartmentReference: residence.apartmentReference,
-      roomReference: residence.roomReference,
-      sourceVersion: residence.sourceVersion,
-      effectiveStart: now,
-      effectiveEnd: null,
-      verifiedAt: now,
-    },
-  });
+// A well-formed scrypt digest of a random secret. Verifying supplied passwords
+// against it for unknown accounts keeps sign-in timing uniform.
+const DUMMY_PASSWORD_HASH = hashPassword(randomUUID());
+
+function toUser(account: UserAccount, roles: RoleName[]): AuthenticatedUser {
+  return {
+    id: account.id,
+    email: account.email,
+    name: account.name,
+    roles,
+  };
 }
 
-export function normalizeEmail(email: string): [string, string] {
+/** Trim + lower-case an email and require a single-`@`, non-empty local/domain. */
+export function normalizeEmail(email: string): string {
   const normalized = email.trim().toLowerCase();
-  const separatorIndex = normalized.lastIndexOf("@");
-  if (separatorIndex <= 0 || separatorIndex >= normalized.length - 1) {
-    throw new UniversityDomainError("email is not eligible for participation");
+  const at = normalized.lastIndexOf("@");
+  if (at <= 0 || at >= normalized.length - 1) {
+    throw new InvalidCredentialsError("a valid email address is required");
   }
-  const domain = normalized.slice(separatorIndex + 1);
-  return [normalized, domain];
-}
-
-export function normalizeUsername(username: string): string {
-  if (!USERNAME_PATTERN.test(username)) {
-    throw new UsernameUnavailableError(
-      "username must contain 3-24 letters, numbers, or underscores",
-    );
-  }
-  return username.toLowerCase();
+  return normalized;
 }

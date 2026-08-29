@@ -15,10 +15,22 @@
  */
 import "dotenv/config";
 
+import { randomBytes, scryptSync } from "node:crypto";
+
 import { PrismaClient } from "@prisma/client";
 import { v5 as uuidv5 } from "uuid";
 
 const prisma = new PrismaClient();
+
+// Mirror of api/_src/crypto.ts hashPassword (kept inline so the seed script has
+// no cross-package build dependency). Must stay format-compatible with it.
+function hashPassword(password: string): string {
+  const salt = randomBytes(16);
+  return `scrypt$${salt.toString("hex")}$${scryptSync(password, salt, 64).toString("hex")}`;
+}
+
+const DEMO_EMAIL = "demo@demo.edu";
+const DEMO_PASSWORD = "password123";
 
 // Same namespace as the original Python seed, so identifiers are stable across
 // the stack migration.
@@ -166,13 +178,30 @@ async function seedPlatformTenant(): Promise<void> {
   });
 }
 
+async function seedDemoAccount(): Promise<void> {
+  const accountId = seedId("platform-account-demo");
+  await prisma.userAccount.upsert({
+    where: { email: DEMO_EMAIL },
+    update: {},
+    create: {
+      id: accountId,
+      email: DEMO_EMAIL,
+      name: "Demo User",
+      passwordHash: hashPassword(DEMO_PASSWORD),
+      status: "active",
+    },
+  });
+}
+
 async function main(): Promise<void> {
   await seedRoster();
   await seedPlatformTenant();
+  await seedDemoAccount();
   // eslint-disable-next-line no-console
   console.log(
-    "Seeded demo tenant + roster. Try active@demo.edu (participates), " +
-      "inactive@demo.edu (ineligible), unknown@demo.edu (not found).",
+    `Seeded a demo account — sign in with ${DEMO_EMAIL} / ${DEMO_PASSWORD}.\n` +
+      "The roster (for GET /api/v1/verification/residents) also has " +
+      "active@demo.edu, inactive@demo.edu, and unknown@demo.edu.",
   );
 }
 

@@ -27,6 +27,7 @@ export function testDb(): PrismaClient {
   return client;
 }
 
+<<<<<<< HEAD
 // Leaf collections first: referential actions are emulated by Prisma (Mongo has
 // no server-side foreign keys), so a Restrict relation still rejects deleting a
 // parent whose children haven't been cleared yet.
@@ -40,6 +41,18 @@ const MODELS = [
   "auditEvent",
   "userAccount",
   "universityEmailDomain",
+=======
+// Order is irrelevant because TRUNCATE ... CASCADE clears dependents.
+const TABLES = [
+  "access_session",
+  "verified_residence",
+  "role_assignment",
+  "user_profile",
+  "university_identity",
+  "audit_event",
+  "user_account",
+  "university_email_domain",
+>>>>>>> 407e5f4 (base added)
   "university",
   "residenceAssignment",
   "enrollment",

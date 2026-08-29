@@ -11,17 +11,17 @@ import type {
 } from "../modules/university/contracts.js";
 
 export const NOW = new Date("2026-08-29T00:00:00.000Z");
-export const CHALLENGE_KEY = "challenge-key-that-is-at-least-32-bytes";
 export const SESSION_KEY = "session-key-that-is-at-least-32-bytes-long";
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
+<<<<<<< HEAD
     databaseUrl: "mongodb://unused/db",
     challengeHmacKey: CHALLENGE_KEY,
+=======
+    databaseUrl: "postgresql://unused/db",
+>>>>>>> 407e5f4 (base added)
     sessionHmacKey: SESSION_KEY,
-    universityGateway: "roster",
-    universityApiUrl: "http://localhost:3001",
-    enableDevInbox: false,
     port: 3001,
     serviceName: "Energy Leaderboard Platform",
     ...overrides,
