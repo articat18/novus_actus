@@ -1,22 +1,26 @@
 # Energy Leaderboard Execution Handoff
 
-**Status:** Paused at user request  
-**Date:** 2026-08-29 (Asia/Singapore)  
-**Branch of record:** `conrad`  
-**Integrated head:** `8f7bf5b` (`feat(competition): define local cumulative comparison windows`)  
-**Remote activity:** Nothing pushed or deployed
+**Status:** Paused at user request
+
+**Date:** 2026-08-29 (Asia/Singapore)
+
+**Branch of record:** `conrad`
+
+**Integrated head:** `093dbec` (`chore(main): integrate energy leaderboard foundation`)
+
+**Remote state:** `origin/main` is also at `093dbec`; no later work has been pushed or deployed
 
 ## Pause condition
 
-- All engineer work is interrupted or complete.
-- No tests should be started until the user explicitly requests resume.
-- The isolated Docker test database container `novus-actus-test-postgres` is stopped, not deleted. Its databases and port mapping remain recoverable with `docker start novus-actus-test-postgres`.
-- The `conrad` worktree is clean before this handoff document is added.
-- Engineer 2 has uncommitted T008 work that must be preserved exactly as listed below.
+- Engineer 2 was interrupted and all other engineers were already complete.
+- No tests, implementation, integration, or verification should start until the user explicitly resumes execution.
+- The isolated Docker test database `novus-actus-test-postgres` is stopped, not deleted. Its databases remain recoverable. Its last host port was `32769`, but Docker must be queried again after restart.
+- The root `conrad` worktree was clean before this handoff update.
+- Engineer 2 safely committed T008, then began T009. The two T009 worktree changes listed below must be preserved exactly.
 
 ## Integrated work on `conrad`
 
-| Task | Commit | Result before pause |
+| Task | Commit | Result |
 |---|---|---|
 | Planning baseline | `6d97eee` | Confirmed context, EARS specification, architecture, and six-person task plan |
 | T001 — Service foundation | `1ec0941` | Python/FastAPI/SQLAlchemy/Alembic/pytest/uv foundation |
@@ -24,19 +28,20 @@
 | T003 — Pseudo-university | `e0017c7` | Separate roster database/service, read-only verification API, platform adapter |
 | T004 — Identity and roles | `bd22d25` | University-email OTP, roster-gated activation, usernames, sessions, role matrix |
 | T014 — Competition windows | `8f7bf5b` | Monday 08:00 cumulative windows with IANA timezone and DST behavior |
+| Main integration | `093dbec` | Preserved the remote `8f37ddb` cleanup and merged the `conrad` foundation history |
 
-The original Engineer 4 T014 commit is `8195a46`; it was cherry-picked into `conrad` as `8f7bf5b` after preserving both lane histories in `.specs/STATE.md`.
+The original Engineer 4 T014 commit is `8195a46`; it was integrated as `8f7bf5b` after preserving both lane histories in `.specs/STATE.md`.
 
 ## Last integrated verification evidence
 
-Before the pause, the integrated `conrad` tree passed:
+Before the earlier pause, the integrated feature tree passed:
 
 - Ruff formatting and lint checks.
 - Strict mypy across 46 source/test files.
 - 44 pytest tests against isolated platform and pseudo-university PostgreSQL databases.
 - T004 platform migration upgrade plus `alembic check` on its isolated database.
 
-Do not interpret this as final feature validation. Only T001–T004 and T014 are integrated; final author-independent verification has not begun.
+This is not final feature validation. Only T001–T004 and T014 are integrated; final author-independent verification has not begun.
 
 ## Engineer worktrees
 
@@ -44,10 +49,11 @@ Do not interpret this as final feature validation. Only T001–T004 and T014 are
 |---|---|---|
 | `tmp/worktrees/engineer1` | `agent/e1-foundation` at `bd22d25` | Clean; T001–T004 complete and integrated |
 | `tmp/worktrees/engineer4` | `agent/e4-windows` at `8195a46` | Clean; T014 complete and integrated as `8f7bf5b` |
-| `tmp/worktrees/engineer2` | `agent/e2-ingestion` at `41872f6` | Contains preserved uncommitted T008 implementation |
-| `tmp/worktrees/review_t5` | detached at `21726d8` | Review-only snapshot; no product edits |
+| `tmp/worktrees/engineer2` | `agent/e2-ingestion` at `743e4b6` | T008 committed; partial uncommitted T009 work preserved |
+| `tmp/worktrees/review_e2_resume` | detached at `41872f6` | Read-only review snapshot; no product edits |
+| `tmp/worktrees/review_t5` | detached at `21726d8` | Older read-only topology review snapshot; no product edits |
 
-Absolute Engineer 2 path:
+Engineer 2 absolute path:
 
 `C:\Users\conrad\code stuff\lifehack_2026\tmp\worktrees\engineer2`
 
@@ -55,73 +61,66 @@ Absolute Engineer 2 path:
 
 | Task | Commit | Review state |
 |---|---|---|
-| T005 — Topology | `21726d8` | Code reviewed; PostgreSQL migration valid; cumulative gate currently fails on the hard-coded migration-head test described below |
-| T006 — Meter credentials | `4b65634` | Code reviewed; Tech Lead found rollback could erase rejected-attempt evidence |
-| T007 — Hourly batch ingestion | `a4006db` | Code reviewed; includes max-24 validation, exact decimals, and concurrent identical-retry behavior |
-| FIX-T006-001 | `41872f6` | Fixes rejected-attempt durability in an independent audit transaction; not yet integrated |
+| T005 — Topology | `21726d8` | Code reviewed; PostgreSQL migration valid; cumulative gate is blocked by the hard-coded migration-head test below |
+| T006 — Meter credentials | `4b65634` | Code reviewed; the rollback-durability defect was addressed by `41872f6` |
+| T007 — Hourly batch ingestion | `a4006db` | Code reviewed; includes max-24 validation, fixed decimals, and concurrent identical-retry handling |
+| FIX-T006-001 | `41872f6` | Persists rejected credential attempts in an independent audit transaction; not integrated |
+| T008 — Changed duplicates | `743e4b6` | Atomically committed with migration, service/API changes, task traceability, and two PostgreSQL correction tests; independent acceptance was interrupted before it ran |
 
-These commits are based on `af7dbda`, so integration into current `conrad` will require cherry-picking and preserving the newer `STATE.md`/task history.
+These commits descend from `af7dbda`. Integration into current `conrad` must cherry-pick them in order while preserving newer task and state history.
 
-## Preserved uncommitted T008 work
+## Preserved uncommitted T009 work
 
-Engineer 2 was interrupted while completing T008. Do not reset, clean, checkout, or recreate this worktree.
+Engineer 2 had started configurable anomaly quarantine when interrupted. Do not reset, clean, checkout, stash, or recreate this worktree.
 
-Modified tracked files:
+Modified tracked file:
 
-- `.specs/STATE.md`
-- `.specs/features/energy-leaderboard-platform/tasks.md`
-- `src/platform_app/modules/ingestion/batches.py`
 - `src/platform_app/modules/ingestion/models.py`
-- `src/platform_app/modules/ingestion/routes.py`
 
-Untracked files:
+Untracked file:
 
-- `migrations/platform/versions/2b5fb43afb91_add_reading_corrections.py`
-- `tests/integration/test_reading_corrections.py`
+- `src/platform_app/modules/ingestion/anomalies.py`
 
-The uncommitted task file marks T008 complete, and the uncommitted state claims two PostgreSQL correction tests passed. The Tech Lead has not independently rerun or accepted that gate because tests were paused. T008 has no commit yet.
+The tracked diff currently introduces anomaly threshold/status/event persistence models. The untracked module is partial application-service work. No T009 migration, route, tests, task checkbox, or commit exists yet, and no gate has been accepted.
 
 ## Open gate findings
 
-### 1. Migration discovery test blocks T005 integration
+### Migration discovery regression
 
-The detached exact-T005 review produced 12 passing tests and one failure. `tests/test_foundation.py` hard-codes platform Alembic head `20260829_0001`, while T005 correctly advances the head to `86b023d25a5a`.
+An author-independent detached review at `41872f6` passed Ruff formatting/lint and strict mypy across 39 files. Pytest produced 20 passes and one failure. `tests/test_foundation.py` expects the original platform Alembic head `20260829_0001`, while the valid topology/ingestion history advances to `8b6b593faca3`.
 
-Engineer 2 was instructed to add a separate fix task and commit, tentatively:
+Engineer 2 must add a separate fix task and commit:
 
 `fix(migrations): validate unbranched migration histories`
 
-The fix should verify that each migration history is unbranched without coupling the test to every new revision ID. It must work both on the Engineer 2 lane and after integration with the pseudo-university migration.
+The fixed test must establish that each available migration history is discoverable and unbranched without coupling to revision IDs. It must work on the E2 lane, where the pseudo-university migration tree is empty, and after integration, where that tree is populated.
 
-### 2. T006 rollback durability
+### T008 independent review
 
-Tech Lead review found that rejected authentication attempts could disappear if the request transaction rolled back. Engineer 2 created `41872f6` with a regression test and independent audit transaction. It still needs integrated-tree review after tests resume.
+The T008 commit records two passing PostgreSQL correction tests for identical retries, immutable accepted values, proposal provenance, and concurrent deduplication. The Tech Lead has not independently rerun that commit because the pause interrupted the review. Evidence remains author-reported until resume.
 
-### 3. T008 is not accepted
+### T009 incomplete
 
-T008 appears implementation-complete but is uncommitted and was not independently verified. Resume it in place, inspect its diff, run its listed gate, then commit exactly:
+T009 is only partially authored and has not been tested. Resume it in place after inspecting the two preserved files. Its eventual atomic commit must be:
 
-`feat(ingestion): audit changed duplicate readings`
-
-### 4. T009 has not started
-
-Configurable anomaly quarantine and audited approval/rejection remain untouched.
+`feat(ingestion): quarantine suspicious energy readings`
 
 ## Safe resume sequence
 
-1. Obtain an explicit user instruction to resume tests and execution.
-2. Start `novus-actus-test-postgres`; confirm its Docker-assigned host port before using stored database URLs.
-3. Re-engage Engineer 2 in the existing worktree. Preserve and finish T008 first; do not rebase or clean with uncommitted changes present.
-4. Independently review T008, then commit it atomically if its gate passes.
-5. Complete T009 in its own commit.
-6. Add the separate migration-history fix commit and rerun the complete Engineer 2 lane against a dedicated PostgreSQL database with zero skipped integration tests.
-7. Cherry-pick T005, T006, T007, FIX-T006-001, T008, T009, and the migration-history fix into `conrad` in dependency order. Resolve only documentation-state conflicts while preserving product changes.
-8. Run the cumulative integrated gate. If green, dispatch Engineer 3 for T010–T013 and then Engineer 4 for T015–T018.
-9. Continue the approved wave plan through platform/demo tasks and fresh author-independent final verification.
+1. Obtain an explicit instruction to resume tests and execution.
+2. Start `novus-actus-test-postgres`, wait for health, and query its newly assigned host port. Use dedicated databases; do not reuse a database migrated by another worktree.
+3. Re-engage Engineer 2 in the existing worktree. Preserve the two partial T009 files; do not rebase, clean, reset, or stash.
+4. Finish T009 with spec-derived PostgreSQL tests, migration, task/STATE updates, and its exact atomic commit.
+5. Add the separate migration-history fix task and exact commit.
+6. Run the complete E2 gate with zero skipped database tests: Ruff format check, Ruff lint, strict mypy, migrations, and pytest.
+7. Independently review T005–T009 and both fixes in a detached worktree, including T008 correction concurrency and T009 approval/rejection/invalidation behavior.
+8. Cherry-pick `21726d8`, `4b65634`, `a4006db`, `41872f6`, `743e4b6`, the future T009 commit, and the migration fix into `conrad` in order. Resolve only documentation-state conflicts unless evidence identifies a product conflict.
+9. Run the cumulative integrated gate. If green, dispatch Engineer 3 for T010–T013, then Engineer 4 for T015–T018, and continue the approved wave plan.
+10. After T027, run a fresh author-independent spec verifier, discrimination sensor, and completion gate before declaring the feature done.
 
 ## Remaining scope
 
-- T005–T009: topology and ingestion integration.
+- Finish and integrate T005–T009 plus both ingestion/migration fixes.
 - T010–T013: residence synchronization and per-person usage calculation.
 - T015–T018: eligibility, scoring, snapshots, finalization, and client APIs.
 - T019–T023: administration, scheduler, privacy lifecycle, archive, and operations.
@@ -130,5 +129,4 @@ Configurable anomaly quarantine and audited approval/rejection remain untouched.
 
 ## Skill-package limitation
 
-The local TLC skill package contains `SKILL.md` but not its referenced `implement.md`, other reference files, or validator scripts. The team followed the main execution contract and performed equivalent checks manually. This limitation remains in effect on resume.
-
+The local TLC skill package contains only `SKILL.md`; its referenced guides and validator scripts are absent. The team must continue applying the published execution contract and equivalent repository gates manually.
