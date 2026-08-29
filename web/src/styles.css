@@ -224,6 +224,15 @@ button:disabled {
   background: var(--danger-soft);
   color: var(--danger);
   font-size: 0.86rem;
+  font-weight: 500;
+}
+
+@media (prefers-color-scheme: dark) {
+  .error {
+    background: var(--danger-soft);
+    color: #fff;
+    border: 1px solid var(--danger);
+  }
 }
 
 .session-grid {
