@@ -131,7 +131,7 @@ flowchart TD
   - **Gate:** Topology migration and PostgreSQL constraint tests pass.
   - **Commit:** `feat(topology): model apartments fuse boxes and meter assignments`
 
-- [ ] **T006 — Add independently revocable meter credentials**
+- [x] **T006 — Add independently revocable meter credentials**
   - **Owner:** Engineer 2
   - **Depends on:** T005
   - **Requirements:** REQ-ING-001, REQ-NFR-002

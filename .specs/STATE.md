@@ -19,8 +19,8 @@
 - **Branch:** `agent/e2-ingestion`, derived from `conrad` at `af7dbda`.
 - **Feature:** `energy-leaderboard-platform`
 - **Current phase:** Execute, Wave 1.
-- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation; T005 — dorm topology and effective assignments.
+- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation; T005 — dorm topology and effective assignments; T006 — revocable meter credentials.
 - **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation` (created with this state update).
-- **T005 gate evidence:** PostgreSQL topology constraint suite passes 4 tests covering multi-room/multi-fuse apartments, overlap rejection, exact boundaries, tenant isolation, and historical resolution; migration and static gates pass.
-- **Implementation scope:** Tenant-qualified dorm topology plus PostgreSQL-enforced, half-open effective fuse-box and meter assignment histories.
-- **Next step:** Execute T006 for independently revocable meter credentials.
+- **T006 gate evidence:** Meter-auth security suite passes 3 PostgreSQL tests covering one-time secret disclosure, salted hashes, authentication, independent rotation/revocation, tenant denial, wrong-secret denial, and persisted rate limits; migration and static gates pass.
+- **Implementation scope:** Tenant-qualified topology plus one-time, salted-scrypt meter credentials with independent lifecycle and authentication attempt limits.
+- **Next step:** Execute T007 for validated idempotent hourly batches.
