@@ -140,6 +140,15 @@ flowchart TD
   - **Gate:** Meter-auth security and integration tests pass.
   - **Commit:** `feat(ingestion): authenticate revocable meter credentials`
 
+- [x] **FIX-T006-001 — Persist rejected authentication attempts across rollback**
+  - **Owner:** Engineer 2
+  - **Depends on:** T006
+  - **Requirements:** REQ-NFR-002
+  - **Work:** Persist meter authentication attempts in an independent audit transaction so a denied request rollback cannot erase rate-limit evidence.
+  - **Tests:** Failed authentication rolls back its request transaction; rejected attempts remain durable and trigger the configured limit.
+  - **Gate:** Meter-auth security and PostgreSQL transaction-boundary regression suites pass.
+  - **Commit:** `fix(ingestion): persist rejected meter attempts`
+
 - [x] **T007 — Persist validated hourly batches idempotently**
   - **Owner:** Engineer 2
   - **Depends on:** T006

@@ -3,8 +3,8 @@
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import Engine, func, select
+from sqlalchemy.orm import Session, sessionmaker
 
 from platform_app.modules.identity.models import University, UniversityStatus
 from platform_app.modules.identity.tenant import TenantAccessDeniedError, TenantContext
@@ -13,7 +13,10 @@ from platform_app.modules.ingestion.credentials import (
     MeterCredentialService,
     MeterRateLimitExceededError,
 )
-from platform_app.modules.ingestion.models import MeterCredential
+from platform_app.modules.ingestion.models import (
+    MeterAuthenticationAttempt,
+    MeterCredential,
+)
 from platform_app.modules.topology.models import Meter, OperationalState
 
 pytestmark = pytest.mark.integration
@@ -116,3 +119,46 @@ def test_wrong_secret_cross_tenant_and_rate_limit_are_denied(
             service.authenticate(meter.id, "wrong", TenantContext(first.id), now=now)
     with pytest.raises(MeterRateLimitExceededError):
         service.authenticate(meter.id, "wrong", TenantContext(first.id), now=now)
+
+
+def test_rejected_attempts_survive_request_transaction_rollback(
+    postgres_engine: Engine,
+) -> None:
+    sessions = sessionmaker(postgres_engine, expire_on_commit=False)
+    with sessions.begin() as setup:
+        university = University(
+            name="Durability University",
+            timezone="Asia/Singapore",
+            status=UniversityStatus.ACTIVE,
+        )
+        setup.add(university)
+        setup.flush()
+        meter = meter_for(setup, university, "durability-meter")
+        MeterCredentialService(setup).provision(meter.id, TenantContext(university.id))
+        meter_id = meter.id
+        university_id = university.id
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+
+    for _ in range(2):
+        with (
+            pytest.raises(MeterCredentialRejectedError),
+            sessions.begin() as request_session,
+        ):
+            MeterCredentialService(request_session, max_attempts=2).authenticate(
+                meter_id, "wrong", TenantContext(university_id), now=now
+            )
+
+    with (
+        sessions.begin() as request_session,
+        pytest.raises(MeterRateLimitExceededError),
+    ):
+        MeterCredentialService(request_session, max_attempts=2).authenticate(
+            meter_id, "wrong", TenantContext(university_id), now=now
+        )
+    with sessions() as verification:
+        attempts = verification.scalar(
+            select(func.count())
+            .select_from(MeterAuthenticationAttempt)
+            .where(MeterAuthenticationAttempt.meter_id == meter_id)
+        )
+    assert attempts == 2

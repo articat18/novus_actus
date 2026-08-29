@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from platform_app.modules.identity.tenant import TenantContext
@@ -157,17 +157,19 @@ class MeterCredentialService:
         credential: MeterCredential | None,
         instant: datetime,
     ) -> None:
-        self._session.add(
-            MeterAuthenticationAttempt(
-                university_id=university_id,
-                meter_id=meter_id,
-                credential_id=credential.id if credential else None,
-                accepted=credential is not None,
-                reason="accepted" if credential else "rejected",
-                attempted_at=instant,
+        bind = self._session.get_bind()
+        engine = bind if isinstance(bind, Engine) else bind.engine
+        with Session(engine) as audit_session, audit_session.begin():
+            audit_session.add(
+                MeterAuthenticationAttempt(
+                    university_id=university_id,
+                    meter_id=meter_id,
+                    credential_id=credential.id if credential else None,
+                    accepted=credential is not None,
+                    reason="accepted" if credential else "rejected",
+                    attempted_at=instant,
+                )
             )
-        )
-        self._session.flush()
 
     @staticmethod
     def _hash(secret: str, salt: bytes) -> bytes:
