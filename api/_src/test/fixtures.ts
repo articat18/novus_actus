@@ -16,7 +16,7 @@ export const SESSION_KEY = "session-key-that-is-at-least-32-bytes-long";
 
 export function testConfig(overrides: Partial<Config> = {}): Config {
   return {
-    databaseUrl: "postgresql://unused/db",
+    databaseUrl: "mongodb://unused/db",
     challengeHmacKey: CHALLENGE_KEY,
     sessionHmacKey: SESSION_KEY,
     universityGateway: "roster",

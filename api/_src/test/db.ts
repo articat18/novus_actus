@@ -1,9 +1,10 @@
 /**
- * PostgreSQL fixtures shared by integration suites (port of
+ * MongoDB fixtures shared by integration suites (port of
  * tests/integration/conftest.py).
  *
  * Integration tests self-skip unless TEST_DATABASE_URL is set. When it is set,
- * the schema is pushed once and every table is truncated before each test.
+ * the schema/indexes are pushed once and every collection is cleared before
+ * each test.
  */
 import { execSync } from "node:child_process";
 
@@ -26,30 +27,32 @@ export function testDb(): PrismaClient {
   return client;
 }
 
-// Order is irrelevant because TRUNCATE ... CASCADE clears dependents.
-const TABLES = [
-  "access_session",
-  "email_challenge",
-  "verified_residence",
-  "role_assignment",
-  "user_profile",
-  "university_identity",
-  "audit_event",
-  "user_account",
-  "university_email_domain",
+// Leaf collections first: referential actions are emulated by Prisma (Mongo has
+// no server-side foreign keys), so a Restrict relation still rejects deleting a
+// parent whose children haven't been cleared yet.
+const MODELS = [
+  "accessSession",
+  "emailChallenge",
+  "verifiedResidence",
+  "roleAssignment",
+  "userProfile",
+  "universityIdentity",
+  "auditEvent",
+  "userAccount",
+  "universityEmailDomain",
   "university",
-  "residence_assignment",
+  "residenceAssignment",
   "enrollment",
   "student",
-  "roster_room",
-  "roster_apartment",
-  "roster_building",
-  "roster_university",
-];
+  "rosterRoom",
+  "rosterApartment",
+  "rosterBuilding",
+  "rosterUniversity",
+] as const;
 
 let schemaReady = false;
 
-/** Ensure the schema exists in the test database (idempotent). */
+/** Ensure the collections/indexes exist in the test database (idempotent). */
 export function ensureSchema(): void {
   if (schemaReady) {
     return;
@@ -63,8 +66,9 @@ export function ensureSchema(): void {
 
 export async function resetDatabase(): Promise<void> {
   const db = testDb();
-  const list = TABLES.map((table) => `"${table}"`).join(", ");
-  await db.$executeRawUnsafe(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE;`);
+  for (const model of MODELS) {
+    await (db[model] as { deleteMany: () => Promise<unknown> }).deleteMany();
+  }
 }
 
 export async function disconnect(): Promise<void> {

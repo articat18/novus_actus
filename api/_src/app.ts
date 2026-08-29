@@ -58,7 +58,7 @@ export function createApp(options: CreateAppOptions = {}): Express {
 
   app.get("/api/health/ready", async (_req, res) => {
     try {
-      await db.$queryRaw`SELECT 1`;
+      await db.$runCommandRaw({ ping: 1 });
       res.json({ ready: true });
     } catch {
       res.status(503).json({ ready: false });

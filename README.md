@@ -6,7 +6,7 @@ electricity, measured at fuse boxes and allocated across university-verified
 occupants.
 
 Originally a Postgres + Python (FastAPI/SQLAlchemy) service, this repository is
-now a **Postgres + ERN** monorepo — **E**xpress, **R**eact, **N**ode, all
+now a **MongoDB + ERN** monorepo — **E**xpress, **R**eact, **N**ode, all
 TypeScript — that runs in the browser and deploys to **Vercel**.
 
 ## Stack
@@ -16,7 +16,7 @@ TypeScript — that runs in the browser and deploys to **Vercel**.
 | Language | TypeScript (strict) |
 | API | Express, deployed as a Vercel serverless function |
 | Web client | React + Vite (SPA) |
-| Database | PostgreSQL via **Prisma** (schema + migrations + client) |
+| Database | MongoDB via **Prisma** (schema + client; `db push`, no SQL migrations) |
 | Validation | zod |
 | Dates / timezones | luxon (DST-correct competition weeks) |
 | Tests | Vitest + Supertest |
@@ -32,7 +32,7 @@ api/            Express app → Vercel serverless function
     ...
 web/            React + Vite SPA (the browser client)
 shared/         framework-free contract types (used by api + web)
-prisma/         schema.prisma · migrations · seed.ts
+prisma/         schema.prisma · seed.ts
 vercel.json     build + routing for Vercel
 .specs/         domain specification (stack-agnostic source of truth)
 ```
@@ -40,8 +40,10 @@ vercel.json     build + routing for Vercel
 ## Prerequisites
 
 - Node.js 20+ (`.nvmrc` pins 22)
-- A PostgreSQL 15+ database. For Vercel, use **Neon** or **Vercel Postgres**
-  (both work with `DATABASE_URL`). Locally you can use Docker or any Postgres.
+- A MongoDB database running as a **replica set** (required for Prisma
+  transactions, even a single-node replica set locally). For hosting, use
+  **MongoDB Atlas** (works with `DATABASE_URL`). Locally you can use Docker —
+  see `.env.example` for a one-line `docker run` + `rs.initiate()` setup.
 
 ## Setup
 
@@ -61,13 +63,20 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 Apply the schema and seed the demo tenant + roster:
 
 ```bash
-npm run prisma:migrate   # prisma migrate deploy (applies prisma/migrations)
-npm run db:seed          # deterministic demo data
+npm run prisma:push   # prisma db push — MongoDB has no SQL migrations
+npm run db:seed       # deterministic demo data
 ```
 
-`npm run prisma:push` (`prisma db push`) is a quick alternative that syncs the
-schema without the hand-authored CHECK constraints. `npm run prisma:studio`
-opens a data browser.
+`npm run prisma:studio` opens a data browser.
+
+Note: the Postgres-era init migration enforced a few things at the database
+layer (CHECK constraints requiring `normalized_*` columns to already be
+lowercase, and a `NULLS NOT DISTINCT` unique index on `role_assignment`). Mongo
+has no CHECK-constraint equivalent, so lowercasing relies entirely on the
+application normalizing before writes. The `NULLS NOT DISTINCT` behavior,
+however, is MongoDB's default for unique indexes (documents with a null/missing
+field already collide), so `@@unique([accountId, role, universityId,
+buildingId])` in `schema.prisma` reproduces it without extra configuration.
 
 Seeded accounts:
 
@@ -100,21 +109,26 @@ Integration tests (identity flow, verification API) self-skip unless a throwaway
 database is provided:
 
 ```bash
-TEST_DATABASE_URL="postgresql://user:pass@localhost:5432/energy_test" npm test
+TEST_DATABASE_URL="mongodb://localhost:27017/energy_test?replicaSet=rs0" npm test
 ```
 
-They push the schema and truncate between cases automatically.
+They push the schema and clear every collection between cases automatically.
 
 ## Deploy to Vercel
 
 1. Import the repo. `vercel.json` already sets the build command
    (`npm run build`), output directory (`web/dist`), and routes `/api/*` to the
    serverless function.
-2. Provision Vercel Postgres or Neon and set project **Environment Variables**:
-   `DATABASE_URL`, `CHALLENGE_HMAC_KEY`, `SESSION_HMAC_KEY`. Leave
+2. Provision a MongoDB Atlas cluster (replica set) and set project
+   **Environment Variables**: `DATABASE_URL`, `CHALLENGE_HMAC_KEY`,
+   `SESSION_HMAC_KEY`. In Atlas's Network Access tab, add the IPs that need to
+   reach the cluster — Vercel's serverless functions use dynamic egress IPs, so
+   most setups either use Atlas's "Allow access from anywhere" (`0.0.0.0/0`)
+   entry or a static-IP add-on; if you use `0.0.0.0/0`, treat the database
+   user's password as the only remaining line of defense. Leave
    `ENABLE_DEV_INBOX` unset (or `false`) in production.
-3. Apply migrations to the production database once:
-   `DATABASE_URL=<prod> npx prisma migrate deploy` (and `npm run db:seed` for the
+3. Push the schema to the production database once:
+   `DATABASE_URL=<prod> npx prisma db push` (and `npm run db:seed` for the
    demo tenant).
 
 `postinstall` runs `prisma generate`, and the client is built for Vercel's
@@ -142,8 +156,10 @@ and the leaderboard/scoring itself. See `.specs/features/energy-leaderboard-plat
   `UniversityVerificationGateway`. Set `UNIVERSITY_GATEWAY=http` to call a
   separate deployment instead.
 - **JSON is camelCase** across the API and client (idiomatic TypeScript).
-- **Prisma** replaces SQLAlchemy/Alembic; CHECK constraints and the
-  `NULLS NOT DISTINCT` unique index live in the hand-authored init migration.
+- **Prisma + MongoDB** replaces SQLAlchemy/Alembic/Postgres; there are no SQL
+  migrations (`prisma db push` syncs the schema), and DB-level CHECK
+  constraints are gone (see the Database section above for what that means in
+  practice).
 - SQLAlchemy's optimistic-lock `version` columns are retained as plain columns
   (not auto-incremented). Row `SELECT … FOR UPDATE` during verification is
   replaced by a Prisma interactive transaction.

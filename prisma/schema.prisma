@@ -8,6 +8,11 @@
 // chosen "merge into one app" architecture they now share one database, but the
 // application keeps a clean module boundary and the roster is only ever read through
 // the UniversityVerificationGateway (see api/_src/modules/university).
+//
+// Backed by MongoDB. IDs are app-generated UUID strings stored in "_id" (not
+// ObjectId) so identifiers stay stable across the earlier Postgres stack and the
+// deterministic UUIDv5 demo seed. MongoDB must run as a replica set (even a
+// single-node one locally) for Prisma's transactions to work.
 
 generator client {
   provider      = "prisma-client-js"
@@ -15,7 +20,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mongodb"
   url      = env("DATABASE_URL")
 }
 
@@ -55,13 +60,13 @@ enum Role {
 // ---------------------------------------------------------------------------
 
 model University {
-  id              String           @id @default(uuid()) @db.Uuid
-  name            String           @db.VarChar(200)
-  timezone        String           @db.VarChar(100)
-  rosterReference String?          @unique @map("roster_reference") @db.VarChar(100)
+  id              String           @id @default(uuid()) @map("_id")
+  name            String
+  timezone        String
+  rosterReference String?          @unique @map("roster_reference")
   status          UniversityStatus
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
   version         Int              @default(1)
 
   emailDomains    UniversityEmailDomain[]
@@ -76,11 +81,11 @@ model University {
 }
 
 model UniversityEmailDomain {
-  id               String   @id @default(uuid()) @db.Uuid
-  universityId     String   @map("university_id") @db.Uuid
-  normalizedDomain String   @unique @map("normalized_domain") @db.VarChar(255)
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id               String   @id @default(uuid()) @map("_id")
+  universityId     String   @map("university_id")
+  normalizedDomain String   @unique @map("normalized_domain")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
   version          Int      @default(1)
 
   university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
@@ -90,10 +95,10 @@ model UniversityEmailDomain {
 }
 
 model UserAccount {
-  id        String        @id @default(uuid()) @db.Uuid
+  id        String        @id @default(uuid()) @map("_id")
   status    AccountStatus
-  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
   version   Int           @default(1)
 
   identities      UniversityIdentity[]
@@ -105,14 +110,14 @@ model UserAccount {
 }
 
 model UniversityIdentity {
-  id                       String          @id @default(uuid()) @db.Uuid
-  universityId             String          @map("university_id") @db.Uuid
-  accountId                String          @map("account_id") @db.Uuid
-  normalizedEmail          String          @map("normalized_email") @db.VarChar(320)
-  externalStudentReference String          @map("external_student_reference") @db.VarChar(200)
+  id                       String          @id @default(uuid()) @map("_id")
+  universityId             String          @map("university_id")
+  accountId                String          @map("account_id")
+  normalizedEmail          String          @map("normalized_email")
+  externalStudentReference String          @map("external_student_reference")
   enrollmentState          EnrollmentState @map("enrollment_state")
-  createdAt                DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt                DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
   version                  Int             @default(1)
 
   university University          @relation(fields: [universityId], references: [id], onDelete: Cascade)
@@ -128,14 +133,14 @@ model UniversityIdentity {
 }
 
 model UserProfile {
-  id                 String          @id @default(uuid()) @db.Uuid
-  universityId       String          @map("university_id") @db.Uuid
-  identityId         String          @unique @map("identity_id") @db.Uuid
-  username           String          @db.VarChar(40)
-  normalizedUsername String          @map("normalized_username") @db.VarChar(40)
+  id                 String          @id @default(uuid()) @map("_id")
+  universityId       String          @map("university_id")
+  identityId         String          @unique @map("identity_id")
+  username           String
+  normalizedUsername String          @map("normalized_username")
   moderationState    ModerationState @map("moderation_state")
-  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
   version            Int             @default(1)
 
   university University          @relation(fields: [universityId], references: [id], onDelete: Cascade)
@@ -147,13 +152,13 @@ model UserProfile {
 }
 
 model RoleAssignment {
-  id           String   @id @default(uuid()) @db.Uuid
-  accountId    String   @map("account_id") @db.Uuid
+  id           String   @id @default(uuid()) @map("_id")
+  accountId    String   @map("account_id")
   role         Role
-  universityId String?  @map("university_id") @db.Uuid
-  buildingId   String?  @map("building_id") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  universityId String?  @map("university_id")
+  buildingId   String?  @map("building_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
   version      Int      @default(1)
 
   account    UserAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -167,17 +172,17 @@ model RoleAssignment {
 }
 
 model AuditEvent {
-  id                   String   @id @default(uuid()) @db.Uuid
-  universityId         String?  @map("university_id") @db.Uuid
-  actorAccountId       String?  @map("actor_account_id") @db.Uuid
-  action               String   @db.VarChar(100)
-  targetType           String   @map("target_type") @db.VarChar(100)
-  targetId             String?  @map("target_id") @db.Uuid
-  reason               String   @db.VarChar(500)
-  beforeState          Json?    @map("before_state") @db.JsonB
-  afterState           Json?    @map("after_state") @db.JsonB
-  requestCorrelationId String?  @map("request_correlation_id") @db.VarChar(100)
-  occurredAt           DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  id                   String   @id @default(uuid()) @map("_id")
+  universityId         String?  @map("university_id")
+  actorAccountId       String?  @map("actor_account_id")
+  action               String
+  targetType           String   @map("target_type")
+  targetId             String?  @map("target_id")
+  reason               String
+  beforeState          Json?    @map("before_state")
+  afterState           Json?    @map("after_state")
+  requestCorrelationId String?  @map("request_correlation_id")
+  occurredAt           DateTime @default(now()) @map("occurred_at")
 
   university University?  @relation(fields: [universityId], references: [id], onDelete: Restrict)
   actor      UserAccount? @relation("AuditActor", fields: [actorAccountId], references: [id], onDelete: SetNull)
@@ -188,15 +193,15 @@ model AuditEvent {
 }
 
 model EmailChallenge {
-  id              String    @id @default(uuid()) @db.Uuid
-  universityId    String    @map("university_id") @db.Uuid
-  normalizedEmail String    @map("normalized_email") @db.VarChar(320)
-  codeDigest      String    @map("code_digest") @db.VarChar(64)
-  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  id              String    @id @default(uuid()) @map("_id")
+  universityId    String    @map("university_id")
+  normalizedEmail String    @map("normalized_email")
+  codeDigest      String    @map("code_digest")
+  expiresAt       DateTime  @map("expires_at")
   attempts        Int       @default(0)
   maxAttempts     Int       @default(5) @map("max_attempts")
-  consumedAt      DateTime? @map("consumed_at") @db.Timestamptz(6)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  consumedAt      DateTime? @map("consumed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
 
   university University @relation(fields: [universityId], references: [id], onDelete: Cascade)
 
@@ -206,12 +211,12 @@ model EmailChallenge {
 }
 
 model AccessSession {
-  id          String    @id @default(uuid()) @db.Uuid
-  accountId   String    @map("account_id") @db.Uuid
-  tokenDigest String    @unique @map("token_digest") @db.VarChar(64)
-  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
-  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @map("_id")
+  accountId   String    @map("account_id")
+  tokenDigest String    @unique @map("token_digest")
+  expiresAt   DateTime  @map("expires_at")
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
 
   account UserAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
 
@@ -220,16 +225,16 @@ model AccessSession {
 }
 
 model VerifiedResidence {
-  id                 String    @id @default(uuid()) @db.Uuid
-  universityId       String    @map("university_id") @db.Uuid
-  identityId         String    @map("identity_id") @db.Uuid
-  buildingReference  String    @map("building_reference") @db.VarChar(100)
-  apartmentReference String    @map("apartment_reference") @db.VarChar(100)
-  roomReference      String    @map("room_reference") @db.VarChar(100)
-  sourceVersion      String    @map("source_version") @db.VarChar(100)
-  effectiveStart     DateTime  @map("effective_start") @db.Timestamptz(6)
-  effectiveEnd       DateTime? @map("effective_end") @db.Timestamptz(6)
-  verifiedAt         DateTime  @map("verified_at") @db.Timestamptz(6)
+  id                 String    @id @default(uuid()) @map("_id")
+  universityId       String    @map("university_id")
+  identityId         String    @map("identity_id")
+  buildingReference  String    @map("building_reference")
+  apartmentReference String    @map("apartment_reference")
+  roomReference      String    @map("room_reference")
+  sourceVersion      String    @map("source_version")
+  effectiveStart     DateTime  @map("effective_start")
+  effectiveEnd       DateTime? @map("effective_end")
+  verifiedAt         DateTime  @map("verified_at")
 
   university University         @relation(fields: [universityId], references: [id], onDelete: Cascade)
   identity   UniversityIdentity @relation(fields: [identityId], references: [id], onDelete: Cascade)
@@ -244,10 +249,10 @@ model VerifiedResidence {
 // ---------------------------------------------------------------------------
 
 model RosterUniversity {
-  id                    String @id @default(uuid()) @db.Uuid
-  externalReference     String @unique @map("external_reference") @db.VarChar(100)
-  name                  String @db.VarChar(200)
-  normalizedEmailDomain String @unique @map("normalized_email_domain") @db.VarChar(255)
+  id                    String @id @default(uuid()) @map("_id")
+  externalReference     String @unique @map("external_reference")
+  name                  String
+  normalizedEmailDomain String @unique @map("normalized_email_domain")
 
   buildings RosterBuilding[]
   students  Student[]
@@ -256,10 +261,10 @@ model RosterUniversity {
 }
 
 model RosterBuilding {
-  id                String @id @default(uuid()) @db.Uuid
-  universityId      String @map("university_id") @db.Uuid
-  externalReference String @map("external_reference") @db.VarChar(100)
-  name              String @db.VarChar(200)
+  id                String @id @default(uuid()) @map("_id")
+  universityId      String @map("university_id")
+  externalReference String @map("external_reference")
+  name              String
 
   university RosterUniversity  @relation(fields: [universityId], references: [id], onDelete: Cascade)
   apartments RosterApartment[]
@@ -269,10 +274,10 @@ model RosterBuilding {
 }
 
 model RosterApartment {
-  id                String @id @default(uuid()) @db.Uuid
-  buildingId        String @map("building_id") @db.Uuid
-  externalReference String @map("external_reference") @db.VarChar(100)
-  label             String @db.VarChar(100)
+  id                String @id @default(uuid()) @map("_id")
+  buildingId        String @map("building_id")
+  externalReference String @map("external_reference")
+  label             String
 
   building RosterBuilding @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   rooms    RosterRoom[]
@@ -282,10 +287,10 @@ model RosterApartment {
 }
 
 model RosterRoom {
-  id                String @id @default(uuid()) @db.Uuid
-  apartmentId       String @map("apartment_id") @db.Uuid
-  externalReference String @map("external_reference") @db.VarChar(100)
-  label             String @db.VarChar(100)
+  id                String @id @default(uuid()) @map("_id")
+  apartmentId       String @map("apartment_id")
+  externalReference String @map("external_reference")
+  label             String
 
   apartment  RosterApartment       @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
   residences ResidenceAssignment[]
@@ -295,10 +300,10 @@ model RosterRoom {
 }
 
 model Student {
-  id                String @id @default(uuid()) @db.Uuid
-  universityId      String @map("university_id") @db.Uuid
-  externalReference String @map("external_reference") @db.VarChar(100)
-  normalizedEmail   String @map("normalized_email") @db.VarChar(320)
+  id                String @id @default(uuid()) @map("_id")
+  universityId      String @map("university_id")
+  externalReference String @map("external_reference")
+  normalizedEmail   String @map("normalized_email")
 
   university  RosterUniversity      @relation(fields: [universityId], references: [id], onDelete: Cascade)
   enrollments Enrollment[]
@@ -310,12 +315,12 @@ model Student {
 }
 
 model Enrollment {
-  id             String    @id @default(uuid()) @db.Uuid
-  studentId      String    @map("student_id") @db.Uuid
+  id             String    @id @default(uuid()) @map("_id")
+  studentId      String    @map("student_id")
   active         Boolean
-  effectiveStart DateTime  @map("effective_start") @db.Timestamptz(6)
-  effectiveEnd   DateTime? @map("effective_end") @db.Timestamptz(6)
-  sourceVersion  String    @map("source_version") @db.VarChar(100)
+  effectiveStart DateTime  @map("effective_start")
+  effectiveEnd   DateTime? @map("effective_end")
+  sourceVersion  String    @map("source_version")
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -324,12 +329,12 @@ model Enrollment {
 }
 
 model ResidenceAssignment {
-  id             String    @id @default(uuid()) @db.Uuid
-  studentId      String    @map("student_id") @db.Uuid
-  roomId         String    @map("room_id") @db.Uuid
-  effectiveStart DateTime  @map("effective_start") @db.Timestamptz(6)
-  effectiveEnd   DateTime? @map("effective_end") @db.Timestamptz(6)
-  sourceVersion  String    @map("source_version") @db.VarChar(100)
+  id             String    @id @default(uuid()) @map("_id")
+  studentId      String    @map("student_id")
+  roomId         String    @map("room_id")
+  effectiveStart DateTime  @map("effective_start")
+  effectiveEnd   DateTime? @map("effective_end")
+  sourceVersion  String    @map("source_version")
 
   student Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
   room    RosterRoom @relation(fields: [roomId], references: [id], onDelete: Restrict)

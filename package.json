@@ -2,7 +2,7 @@
   "name": "energy-leaderboard-platform",
   "version": "0.1.0",
   "private": true,
-  "description": "University apartment-energy leaderboard backend — Postgres + ERN (Express, React, Node, TypeScript)",
+  "description": "University apartment-energy leaderboard backend — MongoDB + ERN (Express, React, Node, TypeScript)",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -21,8 +21,6 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
-    "prisma:migrate:dev": "prisma migrate dev",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "db:seed": "prisma db seed",
