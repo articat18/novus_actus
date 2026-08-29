@@ -1,0 +1,317 @@
+diff --git a/src/platform_app/modules/ingestion/models.py b/src/platform_app/modules/ingestion/models.py
+index c218554..c040b8f 100644
+--- a/src/platform_app/modules/ingestion/models.py
++++ b/src/platform_app/modules/ingestion/models.py
+@@ -6,6 +6,7 @@ from enum import StrEnum
+ from uuid import UUID
+ 
+ from sqlalchemy import (
++    CheckConstraint,
+     ForeignKey,
+     ForeignKeyConstraint,
+     LargeBinary,
+@@ -37,6 +38,12 @@ class CorrectionStatus(StrEnum):
+     REJECTED = "rejected"
+ 
+ 
++class AnomalyStatus(StrEnum):
++    PENDING = "pending"
++    APPROVED = "approved"
++    REJECTED = "rejected"
++
++
+ class MeterCredential(Base):
+     __tablename__ = "meter_credential"
+     __table_args__ = (
+@@ -167,3 +174,89 @@ class ReadingCorrection(Base):
+         ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+     )
+     decision_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
++
++
++class EnergyAnomalyThreshold(Base):
++    __tablename__ = "energy_anomaly_threshold"
++    __table_args__ = (
++        CheckConstraint(
++            "building_id IS NULL OR apartment_id IS NULL",
++            name="single_threshold_resource_scope",
++        ),
++        CheckConstraint("max_hourly_kwh >= 0", name="non_negative_threshold"),
++        UniqueConstraint(
++            "university_id",
++            "building_id",
++            "apartment_id",
++            name="uq_energy_anomaly_threshold_scope",
++            postgresql_nulls_not_distinct=True,
++        ),
++    )
++
++    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
++    university_id: Mapped[UUID] = mapped_column(
++        ForeignKey("university.id", ondelete="CASCADE"), nullable=False, index=True
++    )
++    building_id: Mapped[UUID | None] = mapped_column(
++        ForeignKey("building.id", ondelete="CASCADE"), nullable=True, index=True
++    )
++    apartment_id: Mapped[UUID | None] = mapped_column(
++        ForeignKey("apartment.id", ondelete="CASCADE"), nullable=True, index=True
++    )
++    max_hourly_kwh: Mapped[Decimal] = mapped_column(
++        energy_decimal_type(), nullable=False
++    )
++    active: Mapped[bool] = mapped_column(default=True, nullable=False)
++    created_at: Mapped[datetime] = mapped_column(
++        utc_datetime_type(), default=utc_now, nullable=False
++    )
++
++
++class ReadingAnomaly(Base):
++    __tablename__ = "reading_anomaly"
++    __table_args__ = (UniqueConstraint("reading_id", "rule"),)
++
++    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
++    university_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
++    reading_id: Mapped[UUID] = mapped_column(
++        ForeignKey("meter_hourly_reading.id", ondelete="RESTRICT"),
++        nullable=False,
++        index=True,
++    )
++    threshold_id: Mapped[UUID] = mapped_column(
++        ForeignKey("energy_anomaly_threshold.id", ondelete="RESTRICT"), nullable=False
++    )
++    rule: Mapped[str] = mapped_column(String(100), nullable=False)
++    observed_energy_kwh: Mapped[Decimal] = mapped_column(
++        energy_decimal_type(), nullable=False
++    )
++    threshold_energy_kwh: Mapped[Decimal] = mapped_column(
++        energy_decimal_type(), nullable=False
++    )
++    status: Mapped[AnomalyStatus] = mapped_column(
++        string_enum(AnomalyStatus, "anomaly_status"), nullable=False
++    )
++    detected_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
++    decided_at: Mapped[datetime | None] = mapped_column(
++        utc_datetime_type(), nullable=True
++    )
++    decided_by_account_id: Mapped[UUID | None] = mapped_column(
++        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
++    )
++    decision_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
++
++
++class CalculationInvalidationEvent(Base):
++    __tablename__ = "calculation_invalidation_event"
++
++    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
++    university_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
++    reading_id: Mapped[UUID] = mapped_column(
++        ForeignKey("meter_hourly_reading.id", ondelete="RESTRICT"),
++        nullable=False,
++        index=True,
++    )
++    action: Mapped[str] = mapped_column(String(60), nullable=False)
++    source_type: Mapped[str] = mapped_column(String(60), nullable=False)
++    source_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
++    occurred_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
+diff --git a/src/platform_app/modules/ingestion/anomalies.py b/src/platform_app/modules/ingestion/anomalies.py
+new file mode 100644
+index 0000000..3ebd681
+--- /dev/null
++++ b/src/platform_app/modules/ingestion/anomalies.py
+@@ -0,0 +1,195 @@
++"""Configurable anomaly quarantine and audited review lifecycle."""
++
++from datetime import datetime
++from decimal import Decimal
++from uuid import UUID
++
++from sqlalchemy import or_, select
++from sqlalchemy.orm import Session
++
++from platform_app.modules.identity.models import AuditEvent
++from platform_app.modules.identity.tenant import TenantContext
++from platform_app.modules.ingestion.models import (
++    AnomalyStatus,
++    CalculationInvalidationEvent,
++    EnergyAnomalyThreshold,
++    MeterHourlyReading,
++    ReadingAnomaly,
++    ReadingStatus,
++)
++from platform_app.modules.topology.models import Apartment
++from platform_app.modules.topology.repository import TopologyRepository
++from platform_app.persistence.conventions import quantize_energy, utc_now
++
++
++class AnomalyDecisionError(ValueError):
++    """An anomaly cannot undergo the requested state transition."""
++
++
++class AnomalyService:
++    def __init__(self, session: Session) -> None:
++        self._session = session
++        self._topology = TopologyRepository(session)
++
++    def configure_threshold(
++        self,
++        scope: TenantContext,
++        max_hourly_kwh: Decimal,
++        *,
++        building_id: UUID | None = None,
++        apartment_id: UUID | None = None,
++    ) -> EnergyAnomalyThreshold:
++        if building_id is not None and apartment_id is not None:
++            raise ValueError("a threshold can target one resource scope")
++        value = quantize_energy(max_hourly_kwh)
++        if value < 0:
++            raise ValueError("threshold cannot be negative")
++        threshold = EnergyAnomalyThreshold(
++            university_id=scope.university_id,
++            building_id=building_id,
++            apartment_id=apartment_id,
++            max_hourly_kwh=value,
++            active=True,
++        )
++        self._session.add(threshold)
++        self._session.flush()
++        return threshold
++
++    def evaluate(
++        self, reading: MeterHourlyReading, *, now: datetime | None = None
++    ) -> ReadingAnomaly | None:
++        apartment_id: UUID | None = None
++        building_id: UUID | None = None
++        scope = TenantContext(reading.university_id)
++        try:
++            meter_assignment = self._topology.resolve_meter_fuse_box(
++                reading.meter_id, reading.hour_start_utc, scope
++            )
++            fuse_assignment = self._topology.resolve_fuse_box_apartment(
++                meter_assignment.fuse_box_id, reading.hour_start_utc, scope
++            )
++            apartment = self._session.get(Apartment, fuse_assignment.apartment_id)
++            if apartment is not None:
++                apartment_id = apartment.id
++                building_id = apartment.building_id
++        except LookupError:
++            pass
++
++        thresholds = list(
++            self._session.scalars(
++                select(EnergyAnomalyThreshold).where(
++                    EnergyAnomalyThreshold.university_id == reading.university_id,
++                    EnergyAnomalyThreshold.active.is_(True),
++                    or_(
++                        EnergyAnomalyThreshold.apartment_id == apartment_id,
++                        EnergyAnomalyThreshold.building_id == building_id,
++                        (
++                            EnergyAnomalyThreshold.apartment_id.is_(None)
++                            & EnergyAnomalyThreshold.building_id.is_(None)
++                        ),
++                    ),
++                )
++            )
++        )
++        threshold = max(
++            thresholds,
++            key=lambda item: 2
++            if item.apartment_id is not None
++            else (1 if item.building_id is not None else 0),
++            default=None,
++        )
++        if threshold is None or reading.energy_kwh <= threshold.max_hourly_kwh:
++            return None
++
++        instant = now or utc_now()
++        reading.status = ReadingStatus.QUARANTINED
++        anomaly = ReadingAnomaly(
++            university_id=reading.university_id,
++            reading_id=reading.id,
++            threshold_id=threshold.id,
++            rule="max_hourly_kwh",
++            observed_energy_kwh=reading.energy_kwh,
++            threshold_energy_kwh=threshold.max_hourly_kwh,
++            status=AnomalyStatus.PENDING,
++            detected_at=instant,
++        )
++        self._session.add(anomaly)
++        self._session.flush()
++        return anomaly
++
++    def decide(
++        self,
++        anomaly_id: UUID,
++        actor_account_id: UUID,
++        approve: bool,
++        reason: str,
++        scope: TenantContext,
++        *,
++        now: datetime | None = None,
++    ) -> ReadingAnomaly:
++        if not reason.strip():
++            raise AnomalyDecisionError("an anomaly decision requires a reason")
++        anomaly = self._session.scalar(
++            select(ReadingAnomaly)
++            .where(
++                ReadingAnomaly.id == anomaly_id,
++                ReadingAnomaly.university_id == scope.university_id,
++            )
++            .with_for_update()
++        )
++        if anomaly is None:
++            raise LookupError("anomaly not found")
++        if anomaly.status is not AnomalyStatus.PENDING:
++            raise AnomalyDecisionError("anomaly has already been decided")
++        reading = self._session.get(MeterHourlyReading, anomaly.reading_id)
++        if reading is None:
++            raise LookupError("anomaly reading not found")
++        instant = now or utc_now()
++        before = {"anomaly_status": anomaly.status.value, "reading_status": reading.status.value}
++        anomaly.status = AnomalyStatus.APPROVED if approve else AnomalyStatus.REJECTED
++        anomaly.decided_at = instant
++        anomaly.decided_by_account_id = actor_account_id
++        anomaly.decision_reason = reason.strip()
++        reading.status = ReadingStatus.ACCEPTED if approve else ReadingStatus.REJECTED
++        action = "included" if approve else "excluded"
++        self._session.add_all(
++            [
++                AuditEvent(
++                    university_id=scope.university_id,
++                    actor_account_id=actor_account_id,
++                    action=f"reading.anomaly.{anomaly.status.value}",
++                    target_type="reading_anomaly",
++                    target_id=anomaly.id,
++                    reason=reason.strip(),
++                    before_state=before,
++                    after_state={
++                        "anomaly_status": anomaly.status.value,
++                        "reading_status": reading.status.value,
++                    },
++                    request_correlation_id=None,
++                    occurred_at=instant,
++                ),
++                CalculationInvalidationEvent(
++                    university_id=scope.university_id,
++                    reading_id=reading.id,
++                    action=action,
++                    source_type="reading_anomaly",
++                    source_id=anomaly.id,
++                    occurred_at=instant,
++                ),
++            ]
++        )
++        self._session.flush()
++        return anomaly
++
++
++def accepted_readings_for_calculation(session: Session, university_id: UUID) -> list[MeterHourlyReading]:
++    """Return only readings eligible to contribute to completeness or scoring."""
++    return list(
++        session.scalars(
++            select(MeterHourlyReading).where(
++                MeterHourlyReading.university_id == university_id,
++                MeterHourlyReading.status == ReadingStatus.ACCEPTED,
++            )
++        )
++    )
+

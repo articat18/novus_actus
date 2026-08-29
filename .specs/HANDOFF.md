@@ -4,11 +4,13 @@
 
 **Date:** 2026-08-29 (Asia/Singapore)
 
-**Branch of record:** `conrad`
+**Feature integration branch:** `conrad`
+
+**Published handoff branch:** `main`
 
 **Integrated head:** `093dbec` (`chore(main): integrate energy leaderboard foundation`)
 
-**Remote state:** `origin/main` is also at `093dbec`; no later work has been pushed or deployed
+**Remote state:** This document is published on `origin/main`; committed ingestion work is published on `origin/agent/e2-ingestion`. Nothing is deployed.
 
 ## Pause condition
 
@@ -83,6 +85,8 @@ Untracked file:
 
 The tracked diff currently introduces anomaly threshold/status/event persistence models. The untracked module is partial application-service work. No T009 migration, route, tests, task checkbox, or commit exists yet, and no gate has been accepted.
 
+The exact two-file working diff is also preserved in `.specs/T009-partial.patch` on `origin/main`, allowing continuation from a fresh clone without committing incomplete product code.
+
 ## Open gate findings
 
 ### Migration discovery regression
@@ -105,11 +109,31 @@ T009 is only partially authored and has not been tested. Resume it in place afte
 
 `feat(ingestion): quarantine suspicious energy readings`
 
+## Friend: start here
+
+From a fresh clone, fetch both published branches and recreate the paused E2 state:
+
+```powershell
+git fetch origin
+git switch main
+git pull --ff-only origin main
+git switch --create e2-resume --track origin/agent/e2-ingestion
+git show origin/main:.specs/T009-partial.patch | git apply -
+git status --short
+```
+
+The final status must show only:
+
+- modified `src/platform_app/modules/ingestion/models.py`;
+- untracked `src/platform_app/modules/ingestion/anomalies.py`.
+
+Read `.specs/HANDOFF.md`, `.specs/STATE.md`, and `.specs/features/energy-leaderboard-platform/tasks.md` before editing. Do not treat T008's author-reported gate as independent acceptance, and do not integrate E2 into `main` until the migration-history fix and complete independent E2 gate pass.
+
 ## Safe resume sequence
 
 1. Obtain an explicit instruction to resume tests and execution.
 2. Start `novus-actus-test-postgres`, wait for health, and query its newly assigned host port. Use dedicated databases; do not reuse a database migrated by another worktree.
-3. Re-engage Engineer 2 in the existing worktree. Preserve the two partial T009 files; do not rebase, clean, reset, or stash.
+3. Re-engage Engineer 2 in the existing worktree, or recreate it from the published branch and patch using the commands above. Preserve the two partial T009 files; do not rebase, clean, reset, or stash.
 4. Finish T009 with spec-derived PostgreSQL tests, migration, task/STATE updates, and its exact atomic commit.
 5. Add the separate migration-history fix task and exact commit.
 6. Run the complete E2 gate with zero skipped database tests: Ruff format check, Ruff lint, strict mypy, migrations, and pytest.
