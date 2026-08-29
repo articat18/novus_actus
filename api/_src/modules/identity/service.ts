@@ -1,36 +1,36 @@
 /**
- * Email + password authentication: sign-up, sign-in, sessions, and principals.
+ * Email + password authentication, backed by MongoDB.
  *
- * This replaces the previous passwordless university-email OTP flow. Registration
- * is open to any valid email address; the university roster is no longer consulted
- * here (it remains available read-only through the verification module). Session
- * tokens continue to be opaque and stored only as HMAC-SHA256 digests.
+ * Accounts live in the `users` collection. A successful sign-up or sign-in
+ * issues an opaque bearer token whose HMAC digest is stored in the `sessions`
+ * collection — the raw token never touches the database. Tokens are validated by
+ * digest lookup and expire after {@link DEFAULT_SESSION_TTL_MS}; sign-out simply
+ * deletes the session row.
+ *
+ * Dependencies (clock, token factory, database handle) are injectable so the
+ * service can be driven deterministically in tests.
  */
-import { randomUUID } from "node:crypto";
+import { MongoServerError, type Db } from "mongodb";
 
-import type { RoleName } from "@energy/shared";
-import type { PrismaClient, UserAccount } from "@prisma/client";
-
+import { digestSession, generateToken, verifyPassword } from "../../crypto.js";
+import { getDb } from "../../db.js";
 import {
-  digestSession,
-  generateToken,
-  hashPassword,
-  verifyPassword,
-} from "../../crypto.js";
-import type { Principal } from "./authorization.js";
+  sessionsCollection,
+  usersCollection,
+  type SessionDocument,
+  type UserDocument,
+} from "../../persistence/collections.js";
+import { newUserDocument } from "../../persistence/schemas.js";
 import {
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidSessionError,
+  UsernameAlreadyTakenError,
 } from "./errors.js";
-
-const SESSION_TTL_MS = 60 * 60 * 1000;
-const MIN_PASSWORD_LENGTH = 8;
-const MAX_NAME_LENGTH = 120;
 
 export interface SignUpInput {
   email: string;
-  name: string;
+  username: string;
   password: string;
 }
 
@@ -42,8 +42,7 @@ export interface SignInInput {
 export interface AuthenticatedUser {
   id: string;
   email: string;
-  name: string;
-  roles: RoleName[];
+  username: string;
 }
 
 export interface IssuedSession {
@@ -55,186 +54,134 @@ export interface IssuedSession {
 export interface AuthServiceOptions {
   clock?: () => Date;
   tokenFactory?: () => string;
-  passwordHasher?: (password: string) => string;
-  passwordVerifier?: (password: string, stored: string) => boolean;
+  /** Database handle provider; defaults to the shared connection. */
+  db?: () => Promise<Db>;
+  /** Session lifetime in milliseconds (default 7 days). */
+  sessionTtlMs?: number;
 }
 
+/** Seven days, in milliseconds. */
+export const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export class AuthService {
-  private readonly clock: () => Date;
-  private readonly tokenFactory: () => string;
-  private readonly hash: (password: string) => string;
-  private readonly verify: (password: string, stored: string) => boolean;
+  private readonly now: () => Date;
+  private readonly newToken: () => string;
+  private readonly db: () => Promise<Db>;
+  private readonly ttlMs: number;
 
   constructor(
-    private readonly db: PrismaClient,
     private readonly sessionHmacKey: string,
     options: AuthServiceOptions = {},
   ) {
-    this.clock = options.clock ?? (() => new Date());
-    this.tokenFactory = options.tokenFactory ?? generateToken;
-    this.hash = options.passwordHasher ?? hashPassword;
-    this.verify = options.passwordVerifier ?? verifyPassword;
+    this.now = options.clock ?? (() => new Date());
+    this.newToken = options.tokenFactory ?? generateToken;
+    this.db = options.db ?? getDb;
+    this.ttlMs = options.sessionTtlMs ?? DEFAULT_SESSION_TTL_MS;
   }
 
-  /** Create an account for a new email and open a session. */
-  async signUp({ email, name, password }: SignUpInput): Promise<IssuedSession> {
-    const normalizedEmail = normalizeEmail(email);
-    const displayName = name.trim();
-    if (displayName.length === 0 || displayName.length > MAX_NAME_LENGTH) {
-      throw new InvalidCredentialsError("a name is required");
-    }
-    if (password.length < MIN_PASSWORD_LENGTH) {
-      throw new InvalidCredentialsError(
-        `password must be at least ${MIN_PASSWORD_LENGTH} characters`,
-      );
-    }
-
-    const now = this.clock();
-    let account: UserAccount;
+  async signUp(input: SignUpInput): Promise<IssuedSession> {
+    const db = await this.db();
+    const doc = newUserDocument(input, this.now());
     try {
-      account = await this.db.userAccount.create({
-        data: {
-          status: "active",
-          email: normalizedEmail,
-          name: displayName,
-          passwordHash: this.hash(password),
-        },
-      });
+      await usersCollection(db).insertOne(doc);
     } catch (error) {
-      if ((error as { code?: string }).code === "P2002") {
-        // Unique violation on the email column.
-        throw new EmailAlreadyRegisteredError("email is already registered");
+      const field = duplicateField(error);
+      if (field === "email") {
+        throw new EmailAlreadyRegisteredError(
+          "an account with this email already exists",
+        );
+      }
+      if (field === "username") {
+        throw new UsernameAlreadyTakenError("that username is already taken");
       }
       throw error;
     }
-
-    const session = await this.openSession(account.id, now);
-    return { ...session, user: toUser(account, []) };
+    return this.issueSession(db, doc);
   }
 
-  /** Verify an email/password pair and open a session. */
-  async signIn({ email, password }: SignInInput): Promise<IssuedSession> {
-    const now = this.clock();
-    let normalizedEmail: string;
-    try {
-      normalizedEmail = normalizeEmail(email);
-    } catch {
-      // Keep the timing and error identical to a missing account.
-      normalizedEmail = "";
-    }
-
-    const account =
-      normalizedEmail === ""
-        ? null
-        : await this.db.userAccount.findUnique({
-            where: { email: normalizedEmail },
-          });
-
-    // Always run the verifier — against a dummy digest when the account is
-    // missing — so response time does not reveal whether the email exists.
-    const stored = account?.passwordHash ?? DUMMY_PASSWORD_HASH;
-    const passwordOk = this.verify(password, stored);
-    if (account === null || account.status !== "active" || !passwordOk) {
+  async signIn(input: SignInInput): Promise<IssuedSession> {
+    const db = await this.db();
+    const email = normalizeEmail(input.email);
+    const user = await usersCollection(db).findOne({ email });
+    // One generic failure for "no such account" and "wrong password" alike, so
+    // the response never reveals whether an email is registered.
+    if (user === null || !verifyPassword(input.password, user.passwordHash)) {
       throw new InvalidCredentialsError("email or password is incorrect");
     }
-
-    const roles = await this.rolesFor(account.id);
-    const session = await this.openSession(account.id, now);
-    return { ...session, user: toUser(account, roles) };
+    return this.issueSession(db, user);
   }
 
-  /** The public account view for a valid session token. */
   async userForToken(token: string): Promise<AuthenticatedUser> {
-    const account = await this.accountForToken(token);
-    const roles = await this.rolesFor(account.id);
-    return toUser(account, roles);
+    const db = await this.db();
+    const session = await this.activeSession(db, token);
+    const user = await usersCollection(db).findOne({ _id: session.userId });
+    if (user === null) {
+      throw new InvalidSessionError("session is no longer valid");
+    }
+    return toAuthenticated(user);
   }
 
-  /** The authorization principal (account + role grants) for a valid token. */
-  async principalForToken(token: string): Promise<Principal> {
-    const account = await this.accountForToken(token);
-    const assignments = await this.db.roleAssignment.findMany({
-      where: { accountId: account.id },
-    });
-    return {
-      accountId: account.id,
-      grants: assignments.map((row) => ({
-        role: row.role,
-        universityId: row.universityId,
-        buildingId: row.buildingId,
-      })),
-    };
-  }
-
-  /** Revoke the session behind a token (idempotent). */
   async signOut(token: string): Promise<void> {
-    const now = this.clock();
-    await this.db.accessSession.updateMany({
-      where: {
-        tokenDigest: digestSession(this.sessionHmacKey, token),
-        revokedAt: null,
-      },
-      data: { revokedAt: now },
+    const db = await this.db();
+    // Idempotent: deleting an unknown or already-expired session still succeeds.
+    await sessionsCollection(db).deleteOne({
+      _id: digestSession(this.sessionHmacKey, token),
     });
   }
 
-  private async accountForToken(token: string): Promise<UserAccount> {
-    const now = this.clock();
-    const session = await this.db.accessSession.findFirst({
-      where: {
-        tokenDigest: digestSession(this.sessionHmacKey, token),
-        revokedAt: null,
-        expiresAt: { gt: now },
-      },
-    });
+  /** Persist a fresh session for a user and return the raw token exactly once. */
+  private async issueSession(
+    db: Db,
+    user: UserDocument,
+  ): Promise<IssuedSession> {
+    const token = this.newToken();
+    const now = this.now();
+    const expiresAt = new Date(now.getTime() + this.ttlMs);
+    const session: SessionDocument = {
+      _id: digestSession(this.sessionHmacKey, token),
+      userId: user._id,
+      createdAt: now,
+      expiresAt,
+    };
+    await sessionsCollection(db).insertOne(session);
+    return { accessToken: token, expiresAt, user: toAuthenticated(user) };
+  }
+
+  /** Resolve a live session by token, rejecting missing or expired ones. */
+  private async activeSession(db: Db, token: string): Promise<SessionDocument> {
+    const digest = digestSession(this.sessionHmacKey, token);
+    const session = await sessionsCollection(db).findOne({ _id: digest });
     if (session === null) {
-      throw new InvalidSessionError("access token is invalid");
+      throw new InvalidSessionError("session token is invalid");
     }
-    const account = await this.db.userAccount.findUnique({
-      where: { id: session.accountId },
-    });
-    if (account === null || account.status !== "active") {
-      throw new InvalidSessionError("access token is invalid");
+    // The TTL index reclaims expired rows lazily; reject them promptly here too.
+    if (session.expiresAt.getTime() <= this.now().getTime()) {
+      await sessionsCollection(db).deleteOne({ _id: digest });
+      throw new InvalidSessionError("session has expired");
     }
-    return account;
-  }
-
-  private async rolesFor(accountId: string): Promise<RoleName[]> {
-    const assignments = await this.db.roleAssignment.findMany({
-      where: { accountId },
-    });
-    return assignments.map((row) => row.role);
-  }
-
-  private async openSession(
-    accountId: string,
-    now: Date,
-  ): Promise<{ accessToken: string; expiresAt: Date }> {
-    const token = this.tokenFactory();
-    const expiresAt = new Date(now.getTime() + SESSION_TTL_MS);
-    await this.db.accessSession.create({
-      data: {
-        accountId,
-        tokenDigest: digestSession(this.sessionHmacKey, token),
-        expiresAt,
-        createdAt: now,
-      },
-    });
-    return { accessToken: token, expiresAt };
+    return session;
   }
 }
 
-// A well-formed scrypt digest of a random secret. Verifying supplied passwords
-// against it for unknown accounts keeps sign-in timing uniform.
-const DUMMY_PASSWORD_HASH = hashPassword(randomUUID());
+function toAuthenticated(user: UserDocument): AuthenticatedUser {
+  return { id: user._id, email: user.email, username: user.username };
+}
 
-function toUser(account: UserAccount, roles: RoleName[]): AuthenticatedUser {
-  return {
-    id: account.id,
-    email: account.email,
-    name: account.name,
-    roles,
-  };
+/**
+ * The unique field a duplicate-key error collided on, or null for anything else.
+ * Sign-up uniqueness lives on `users.email` and `users.normalizedUsername`.
+ */
+function duplicateField(error: unknown): "email" | "username" | null {
+  if (error instanceof MongoServerError && error.code === 11000) {
+    const keys = Object.keys(error.keyPattern ?? {});
+    if (keys.includes("email")) {
+      return "email";
+    }
+    if (keys.includes("normalizedUsername")) {
+      return "username";
+    }
+  }
+  return null;
 }
 
 /** Trim + lower-case an email and require a single-`@`, non-empty local/domain. */

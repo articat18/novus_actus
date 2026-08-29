@@ -1,13 +1,14 @@
 /**
  * Environment-backed configuration.
  *
- * Validated with zod: the database URL must be present and the session HMAC key
- * at least 32 characters, failing fast at startup when misconfigured.
+ * Validated with zod: the MongoDB connection string must be present and the
+ * session HMAC key at least 32 characters, failing fast at startup when
+ * misconfigured.
  */
 import { z } from "zod";
 
 const ConfigSchema = z.object({
-  databaseUrl: z.string().min(1, "DATABASE_URL is required"),
+  mongodbUri: z.string().min(1, "MONGODB_URI is required"),
   sessionHmacKey: z
     .string()
     .min(32, "SESSION_HMAC_KEY must be at least 32 characters"),
@@ -35,7 +36,7 @@ export class ConfigError extends Error {
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const result = ConfigSchema.safeParse({
-    databaseUrl: env.DATABASE_URL,
+    mongodbUri: env.MONGODB_URI,
     sessionHmacKey: env.SESSION_HMAC_KEY,
     port: env.PORT,
     serviceName: env.SERVICE_NAME,

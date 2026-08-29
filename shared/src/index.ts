@@ -19,7 +19,7 @@ export type VerificationStatusName = "active" | "inactive" | "not_found";
 
 export interface SignUpRequest {
   email: string;
-  name: string;
+  username: string;
   password: string;
 }
 
@@ -28,12 +28,11 @@ export interface SignInRequest {
   password: string;
 }
 
-/** Public account view — never includes the email/password digest secrets. */
+/** Public account view — never includes the password digest. */
 export interface AuthUser {
   id: string;
   email: string;
-  name: string;
-  roles: RoleName[];
+  username: string;
 }
 
 export interface SessionResponse {

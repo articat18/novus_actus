@@ -16,8 +16,6 @@ export function HomePage() {
     );
   }
 
-  const roles = user.roles.length > 0 ? user.roles.join(", ") : "No roles yet";
-
   return (
     <div className="app">
       <header className="masthead">
@@ -31,22 +29,18 @@ export function HomePage() {
       </header>
 
       <main className="card home-card">
-        <h2>Welcome, {user.name}</h2>
+        <h2>Welcome, {user.username}</h2>
         <p className="sub">
           You're signed in. The competition dashboard is on the way.
         </p>
         <div className="session-grid">
           <div className="stat">
-            <div className="k">Name</div>
-            <div className="v">{user.name}</div>
+            <div className="k">Username</div>
+            <div className="v">{user.username}</div>
           </div>
           <div className="stat">
             <div className="k">Email</div>
             <div className="v">{user.email}</div>
-          </div>
-          <div className="stat" style={{ gridColumn: "1 / -1" }}>
-            <div className="k">Roles</div>
-            <div className="v">{roles}</div>
           </div>
         </div>
         <button
@@ -62,8 +56,8 @@ export function HomePage() {
       </main>
 
       <footer>
-        Postgres + ERN (Express · React · Node · TypeScript) · Prisma ·
-        deployable on Vercel
+        MongoDB + ERN (Express · React · Node · TypeScript) · deployable on
+        Vercel
       </footer>
     </div>
   );

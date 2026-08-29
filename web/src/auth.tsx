@@ -18,7 +18,7 @@ export interface AuthState {
   /** True while an existing token is being validated on startup. */
   loading: boolean;
   signIn(email: string, password: string): Promise<void>;
-  signUp(email: string, name: string, password: string): Promise<void>;
+  signUp(email: string, username: string, password: string): Promise<void>;
   signOut(): Promise<void>;
 }
 
@@ -97,8 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(session.user);
         setLoading(false);
       },
-      async signUp(email, name, password) {
-        const session = await api.signUp({ email, name, password });
+      async signUp(email, username, password) {
+        const session = await api.signUp({ email, username, password });
         writeToken(session.accessToken);
         setToken(session.accessToken);
         setUser(session.user);

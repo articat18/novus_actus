@@ -2,13 +2,15 @@
  * Email + password identity HTTP API.
  *
  * Routes (mounted under /api/v1):
- *   POST /auth/sign-up   -> 201 create an account and open a session
- *   POST /auth/sign-in   -> 200 verify credentials and open a session
- *   GET  /auth/me        -> 200 the current account for a bearer token
- *   POST /auth/sign-out  -> 204 revoke the current session
+ *   POST /auth/sign-up   -> create an account and open a session
+ *   POST /auth/sign-in   -> verify credentials and open a session
+ *   GET  /auth/me        -> the current account for a bearer token
+ *   POST /auth/sign-out  -> revoke the current session
+ *
+ * The persistence layer is being migrated to MongoDB; the endpoints validate
+ * their input and then return 501 until the identity collections are defined.
  */
 import type { AuthUser, SessionResponse } from "@energy/shared";
-import type { PrismaClient } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 
@@ -17,6 +19,8 @@ import {
   EmailAlreadyRegisteredError,
   InvalidCredentialsError,
   InvalidSessionError,
+  NotImplementedError,
+  UsernameAlreadyTakenError,
 } from "./errors.js";
 import {
   AuthService,
@@ -33,7 +37,12 @@ export interface AuthRuntime {
 const SignUpSchema = z
   .object({
     email: z.string().email().max(320),
-    name: z.string().trim().min(1).max(120),
+    username: z
+      .string()
+      .trim()
+      .min(3)
+      .max(30)
+      .regex(/^[a-zA-Z0-9_.-]+$/, "letters, numbers, and . _ - only"),
     password: z.string().min(8).max(200),
   })
   .strict();
@@ -47,13 +56,10 @@ const SignInSchema = z
   })
   .strict();
 
-export function createAuthRouter(
-  db: PrismaClient,
-  runtime: AuthRuntime,
-): Router {
+export function createAuthRouter(runtime: AuthRuntime): Router {
   const router = Router();
   const newService = (): AuthService =>
-    new AuthService(db, runtime.sessionHmacKey, {
+    new AuthService(runtime.sessionHmacKey, {
       clock: runtime.clock,
       tokenFactory: runtime.tokenFactory,
     });
@@ -72,12 +78,7 @@ export function createAuthRouter(
         const issued = await newService().signUp(parsed.data);
         res.status(201).json(sessionBody(issued));
       } catch (error) {
-        if (error instanceof EmailAlreadyRegisteredError) {
-          res.status(409).json({ error: error.message });
-          return;
-        }
-        if (error instanceof InvalidCredentialsError) {
-          res.status(422).json({ error: error.message });
+        if (handleAuthError(res, error)) {
           return;
         }
         throw error;
@@ -99,8 +100,7 @@ export function createAuthRouter(
         const issued = await newService().signIn(parsed.data);
         res.status(200).json(sessionBody(issued));
       } catch (error) {
-        if (error instanceof InvalidCredentialsError) {
-          res.status(401).json({ error: error.message });
+        if (handleAuthError(res, error)) {
           return;
         }
         throw error;
@@ -120,8 +120,7 @@ export function createAuthRouter(
         const user = await newService().userForToken(token);
         res.status(200).json(userBody(user));
       } catch (error) {
-        if (error instanceof InvalidSessionError) {
-          res.status(401).json({ error: error.message });
+        if (handleAuthError(res, error)) {
           return;
         }
         throw error;
@@ -137,12 +136,43 @@ export function createAuthRouter(
         res.status(401).json({ error: "access token is required" });
         return;
       }
-      await newService().signOut(token);
-      res.status(204).end();
+      try {
+        await newService().signOut(token);
+        res.status(204).end();
+      } catch (error) {
+        if (handleAuthError(res, error)) {
+          return;
+        }
+        throw error;
+      }
     }),
   );
 
   return router;
+}
+
+/** Map known auth errors to responses. Returns true when it handled the error. */
+function handleAuthError(res: import("express").Response, error: unknown): boolean {
+  if (error instanceof NotImplementedError) {
+    res.status(501).json({ error: error.message });
+    return true;
+  }
+  if (
+    error instanceof EmailAlreadyRegisteredError ||
+    error instanceof UsernameAlreadyTakenError
+  ) {
+    res.status(409).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof InvalidCredentialsError) {
+    res.status(401).json({ error: error.message });
+    return true;
+  }
+  if (error instanceof InvalidSessionError) {
+    res.status(401).json({ error: error.message });
+    return true;
+  }
+  return false;
 }
 
 function sessionBody(issued: IssuedSession): SessionResponse {
@@ -158,8 +188,7 @@ function userBody(user: AuthenticatedUser): AuthUser {
   return {
     id: user.id,
     email: user.email,
-    name: user.name,
-    roles: user.roles,
+    username: user.username,
   };
 }
 

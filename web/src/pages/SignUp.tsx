@@ -6,6 +6,7 @@ import { useAuth } from "../auth";
 import { AuthShell } from "./AuthShell";
 
 const MIN_PASSWORD = 8;
+const MIN_USERNAME = 3;
 
 function messageOf(error: unknown): string {
   if (error instanceof ApiError || error instanceof Error) {
@@ -17,7 +18,7 @@ function messageOf(error: unknown): string {
 export function SignUpPage() {
   const { signUp } = useAuth();
   const [email, setEmail] = useState("");
-  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -34,9 +35,13 @@ export function SignUpPage() {
       setError("Passwords do not match.");
       return;
     }
+    if (username.trim().length < MIN_USERNAME) {
+      setError(`Username must be at least ${MIN_USERNAME} characters.`);
+      return;
+    }
     setLoading(true);
     try {
-      await signUp(email.trim(), name.trim(), password);
+      await signUp(email.trim(), username.trim(), password);
       // On success the router swaps this route for the app home.
     } catch (err) {
       setError(messageOf(err));
@@ -68,14 +73,15 @@ export function SignUpPage() {
           />
         </div>
         <div className="field">
-          <label htmlFor="name">Name</label>
+          <label htmlFor="username">Username</label>
           <input
-            id="name"
+            id="username"
             type="text"
-            autoComplete="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Your name"
+            autoComplete="username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="yourhandle"
+            minLength={MIN_USERNAME}
             required
           />
         </div>
