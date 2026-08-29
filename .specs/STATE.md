@@ -19,8 +19,8 @@
 - **Branch:** `agent/e2-ingestion`, derived from `conrad` at `af7dbda`.
 - **Feature:** `energy-leaderboard-platform`
 - **Current phase:** Execute, Wave 1.
-- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation; T005 — dorm topology and effective assignments; T006 — revocable meter credentials; FIX-T006-001 — durable rejected meter attempts; T007 — idempotent hourly batch ingestion.
+- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation; T005 — dorm topology and effective assignments; T006 — revocable meter credentials; FIX-T006-001 — durable rejected meter attempts; T007 — idempotent hourly batch ingestion; T008 — immutable changed-duplicate corrections.
 - **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation` (created with this state update).
-- **FIX-T006-001 gate evidence:** A PostgreSQL request-boundary regression proves two failed authentication transactions roll back while their independently committed audit attempts survive and enforce the configured rate limit.
+- **T008 gate evidence:** Correction suite passes 2 PostgreSQL tests covering identical no-op retries, changed-value proposals, before/after audit provenance, concurrent proposal deduplication, and accepted-reading immutability.
 - **Implementation scope:** Authenticated ingestion persists batch provenance and unique meter-hour readings with per-record accepted, duplicate, changed-duplicate, or rejected outcomes.
-- **Next step:** Apply the recorded meter-attempt durability fix, then execute T008 for immutable correction proposals.
+- **Next step:** Execute T009 for configurable anomaly quarantine and audited decisions.

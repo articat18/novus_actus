@@ -31,6 +31,12 @@ class ReadingStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class CorrectionStatus(StrEnum):
+    PROPOSED = "proposed"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class MeterCredential(Base):
     __tablename__ = "meter_credential"
     __table_args__ = (
@@ -118,3 +124,46 @@ class MeterHourlyReading(Base):
     submission_id: Mapped[UUID] = mapped_column(
         ForeignKey("reading_submission.id", ondelete="RESTRICT"), nullable=False
     )
+
+
+class ReadingCorrection(Base):
+    __tablename__ = "reading_correction"
+    __table_args__ = (
+        UniqueConstraint(
+            "reading_id",
+            "proposed_energy_kwh",
+            name="uq_reading_correction_reading_proposed_energy",
+        ),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    university_id: Mapped[UUID] = mapped_column(Uuid, nullable=False, index=True)
+    reading_id: Mapped[UUID] = mapped_column(
+        ForeignKey("meter_hourly_reading.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    previous_energy_kwh: Mapped[Decimal] = mapped_column(
+        energy_decimal_type(), nullable=False
+    )
+    proposed_energy_kwh: Mapped[Decimal] = mapped_column(
+        energy_decimal_type(), nullable=False
+    )
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    proposed_by_credential_id: Mapped[UUID] = mapped_column(
+        ForeignKey("meter_credential.id", ondelete="RESTRICT"), nullable=False
+    )
+    source_submission_id: Mapped[UUID] = mapped_column(
+        ForeignKey("reading_submission.id", ondelete="RESTRICT"), nullable=False
+    )
+    status: Mapped[CorrectionStatus] = mapped_column(
+        string_enum(CorrectionStatus, "correction_status"), nullable=False
+    )
+    proposed_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
+    decided_at: Mapped[datetime | None] = mapped_column(
+        utc_datetime_type(), nullable=True
+    )
+    decided_by_account_id: Mapped[UUID | None] = mapped_column(
+        ForeignKey("user_account.id", ondelete="SET NULL"), nullable=True
+    )
+    decision_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

@@ -158,7 +158,7 @@ flowchart TD
   - **Gate:** Ingestion API, concurrency, and database uniqueness suites pass.
   - **Commit:** `feat(ingestion): accept idempotent hourly energy batches`
 
-- [ ] **T008 — Route changed duplicates through immutable corrections**
+- [x] **T008 — Route changed duplicates through immutable corrections**
   - **Owner:** Engineer 2
   - **Depends on:** T007
   - **Requirements:** REQ-ING-002, REQ-ADM-001

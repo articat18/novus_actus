@@ -33,6 +33,7 @@ class RecordOutcomeResponse(BaseModel):
     index: int
     status: str
     reading_id: UUID | None
+    correction_id: UUID | None
     reason: str | None
 
 
@@ -83,6 +84,7 @@ def create_ingestion_router(session_factory: SessionFactory) -> APIRouter:
                     index=item.index,
                     status=item.status.value,
                     reading_id=item.reading_id,
+                    correction_id=item.correction_id,
                     reason=item.reason,
                 )
                 for item in outcome.outcomes

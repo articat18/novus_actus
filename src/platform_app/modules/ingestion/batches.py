@@ -11,10 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from platform_app.modules.identity.models import AuditEvent
 from platform_app.modules.identity.tenant import TenantContext
 from platform_app.modules.ingestion.credentials import MeterCredentialService
 from platform_app.modules.ingestion.models import (
+    CorrectionStatus,
     MeterHourlyReading,
+    ReadingCorrection,
     ReadingStatus,
     ReadingSubmission,
 )
@@ -45,6 +48,7 @@ class RecordOutcome:
     index: int
     status: RecordOutcomeStatus
     reading_id: UUID | None = None
+    correction_id: UUID | None = None
     reason: str | None = None
 
 
@@ -160,12 +164,77 @@ class HourlyBatchIngestionService:
         )
         if existing is None:
             raise RuntimeError("unique conflict did not resolve to an existing reading")
-        status = (
-            RecordOutcomeStatus.DUPLICATE
-            if existing.energy_kwh == energy
-            else RecordOutcomeStatus.CHANGED_DUPLICATE
+        if existing.energy_kwh == energy:
+            return RecordOutcome(index, RecordOutcomeStatus.DUPLICATE, existing.id)
+        correction_id = self._create_correction(
+            existing, energy, credential_id, submission, now
         )
-        return RecordOutcome(index, status, existing.id)
+        return RecordOutcome(
+            index,
+            RecordOutcomeStatus.CHANGED_DUPLICATE,
+            existing.id,
+            correction_id,
+        )
+
+    def _create_correction(
+        self,
+        reading: MeterHourlyReading,
+        proposed_energy: Decimal,
+        credential_id: UUID,
+        submission: ReadingSubmission,
+        now: datetime,
+    ) -> UUID:
+        correction_id = new_id()
+        inserted_id = self._session.scalar(
+            insert(ReadingCorrection)
+            .values(
+                id=correction_id,
+                university_id=reading.university_id,
+                reading_id=reading.id,
+                previous_energy_kwh=reading.energy_kwh,
+                proposed_energy_kwh=proposed_energy,
+                reason="changed duplicate submitted by authenticated meter",
+                proposed_by_credential_id=credential_id,
+                source_submission_id=submission.id,
+                status=CorrectionStatus.PROPOSED,
+                proposed_at=now,
+            )
+            .on_conflict_do_nothing(
+                index_elements=["reading_id", "proposed_energy_kwh"]
+            )
+            .returning(ReadingCorrection.id)
+        )
+        if inserted_id is None:
+            existing_id = self._session.scalar(
+                select(ReadingCorrection.id).where(
+                    ReadingCorrection.reading_id == reading.id,
+                    ReadingCorrection.proposed_energy_kwh == proposed_energy,
+                )
+            )
+            if existing_id is None:
+                raise RuntimeError("correction conflict did not resolve")
+            return existing_id
+        self._session.add(
+            AuditEvent(
+                university_id=reading.university_id,
+                actor_account_id=None,
+                action="reading.correction.proposed",
+                target_type="reading_correction",
+                target_id=inserted_id,
+                reason="authenticated meter submitted a changed duplicate",
+                before_state={"energy_kwh": str(reading.energy_kwh)},
+                after_state={
+                    "energy_kwh": str(proposed_energy),
+                    "reading_id": str(reading.id),
+                    "submission_id": str(submission.id),
+                    "credential_id": str(credential_id),
+                },
+                request_correlation_id=submission.correlation_id,
+                occurred_at=now,
+            )
+        )
+        self._session.flush()
+        return inserted_id
 
     def _parse_hour(self, value: Any, now: datetime) -> datetime:
         if isinstance(value, str):
