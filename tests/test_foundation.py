@@ -16,6 +16,8 @@ def test_both_application_packages_import_and_build() -> None:
     platform_settings = PlatformSettings(
         database_url="postgresql+psycopg://example/platform",
         university_api_url=AnyHttpUrl("https://university.example.test"),
+        challenge_hmac_key="challenge-key-that-is-at-least-32-bytes",
+        session_hmac_key="session-key-that-is-at-least-32-bytes-long",
     )
     university_settings = PseudoUniversitySettings(
         database_url="postgresql+psycopg://example/university"
@@ -40,7 +42,12 @@ def test_platform_configuration_rejects_missing_required_settings(
         PlatformSettings()
 
     missing_fields = {item["loc"] for item in error.value.errors()}
-    assert missing_fields == {("database_url",), ("university_api_url",)}
+    assert missing_fields == {
+        ("database_url",),
+        ("university_api_url",),
+        ("challenge_hmac_key",),
+        ("session_hmac_key",),
+    }
 
 
 def test_university_configuration_rejects_missing_database_url(
@@ -57,7 +64,7 @@ def test_university_configuration_rejects_missing_database_url(
 @pytest.mark.parametrize(
     ("config_path", "expected_heads"),
     [
-        ("migrations/platform.ini", ["20260829_0001"]),
+        ("migrations/platform.ini", ["20260829_0002"]),
         ("migrations/pseudo_university.ini", ["20260829_uni_0001"]),
     ],
 )

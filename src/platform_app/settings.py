@@ -1,6 +1,6 @@
 """Environment-backed platform configuration."""
 
-from pydantic import AnyHttpUrl, Field
+from pydantic import AnyHttpUrl, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,4 +20,6 @@ class PlatformSettings(PlatformDatabaseSettings):
     """Required startup settings for the platform deployable."""
 
     university_api_url: AnyHttpUrl
+    challenge_hmac_key: SecretStr = Field(min_length=32)
+    session_hmac_key: SecretStr = Field(min_length=32)
     service_name: str = "Energy Leaderboard Platform"

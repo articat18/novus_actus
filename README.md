@@ -40,6 +40,18 @@ uv run pytest
 
 Apply formatting with `uv run ruff format .`.
 
+PostgreSQL integration tests run when their isolated database URLs are set:
+
+```powershell
+$env:TEST_DATABASE_URL='postgresql+psycopg://postgres:test@localhost:55432/energy_test'
+$env:TEST_UNIVERSITY_DATABASE_URL='postgresql+psycopg://postgres:test@localhost:55432/university_test'
+uv run pytest
+```
+
+Tests skip only the database-specific suites when the corresponding URL is not
+present. Task gates that require PostgreSQL must set the URL and report the
+integration-test count.
+
 ## Service entry points
 
 The application factories load and validate service-specific configuration at

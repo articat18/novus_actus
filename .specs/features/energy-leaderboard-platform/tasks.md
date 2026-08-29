@@ -111,7 +111,7 @@ flowchart TD
   - **Gate:** Pseudo-university unit, migration, API, and consumer contract tests pass.
   - **Commit:** `feat(university): add isolated roster verification service`
 
-- [ ] **T004 — Implement passwordless identity, roster activation, usernames, and roles**
+- [x] **T004 — Implement passwordless identity, roster activation, usernames, and roles**
   - **Owner:** Engineer 1
   - **Depends on:** T002, T003
   - **Requirements:** REQ-ID-001, REQ-ID-002, REQ-ID-003, REQ-TEN-001

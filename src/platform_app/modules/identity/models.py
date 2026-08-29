@@ -79,6 +79,9 @@ class University(MutableRecord, Base):
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     timezone: Mapped[str] = mapped_column(String(100), nullable=False)
+    roster_reference: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, unique=True
+    )
     status: Mapped[UniversityStatus] = mapped_column(
         string_enum(UniversityStatus, "university_status"), nullable=False
     )
@@ -228,6 +231,79 @@ class AuditEvent(Base):
     )
 
 
+class EmailChallenge(Base):
+    __tablename__ = "email_challenge"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    university_id: Mapped[UUID] = mapped_column(
+        ForeignKey("university.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    normalized_email: Mapped[str] = mapped_column(
+        String(320), nullable=False, index=True
+    )
+    code_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
+    attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    max_attempts: Mapped[int] = mapped_column(default=5, nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        utc_datetime_type(), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        utc_datetime_type(), default=utc_now, nullable=False
+    )
+
+
+class AccessSession(Base):
+    __tablename__ = "access_session"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    account_id: Mapped[UUID] = mapped_column(
+        ForeignKey("user_account.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_digest: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        utc_datetime_type(), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        utc_datetime_type(), default=utc_now, nullable=False
+    )
+
+
+class VerifiedResidence(Base):
+    __tablename__ = "verified_residence"
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=new_id)
+    university_id: Mapped[UUID] = mapped_column(
+        ForeignKey("university.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    identity_id: Mapped[UUID] = mapped_column(
+        ForeignKey("university_identity.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    building_reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    apartment_reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    room_reference: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    effective_start: Mapped[datetime] = mapped_column(
+        utc_datetime_type(), nullable=False
+    )
+    effective_end: Mapped[datetime | None] = mapped_column(
+        utc_datetime_type(), nullable=True
+    )
+    verified_at: Mapped[datetime] = mapped_column(utc_datetime_type(), nullable=False)
+
+
 Index(
     "ix_role_assignment_scope", RoleAssignment.university_id, RoleAssignment.building_id
+)
+Index(
+    "uq_role_assignment_effective_scope",
+    RoleAssignment.account_id,
+    RoleAssignment.role,
+    RoleAssignment.university_id,
+    RoleAssignment.building_id,
+    unique=True,
+    postgresql_nulls_not_distinct=True,
 )
