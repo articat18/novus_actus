@@ -93,7 +93,7 @@ flowchart TD
   - **Gate:** Formatting, linting, type checking, and empty/smoke test suites pass from documented commands.
   - **Commit:** `build(platform): establish reproducible service foundation`
 
-- [ ] **T002 — Implement tenant-aware persistence foundation**
+- [x] **T002 — Implement tenant-aware persistence foundation**
   - **Owner:** Engineer 1
   - **Depends on:** T001
   - **Requirements:** REQ-TEN-001, REQ-NFR-001, REQ-NFR-002

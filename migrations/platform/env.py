@@ -5,6 +5,7 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from platform_app.modules.identity import models as identity_models
 from platform_app.persistence import Base
 from platform_app.settings import PlatformDatabaseSettings
 
@@ -14,6 +15,8 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", PlatformDatabaseSettings().database_url)
 target_metadata = Base.metadata
+
+assert identity_models is not None
 
 
 def run_migrations_offline() -> None:

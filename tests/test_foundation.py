@@ -55,10 +55,15 @@ def test_university_configuration_rejects_missing_database_url(
 
 
 @pytest.mark.parametrize(
-    "config_path",
-    ["migrations/platform.ini", "migrations/pseudo_university.ini"],
+    ("config_path", "expected_heads"),
+    [
+        ("migrations/platform.ini", ["20260829_0001"]),
+        ("migrations/pseudo_university.ini", []),
+    ],
 )
-def test_migration_entry_point_is_discoverable(config_path: str) -> None:
+def test_migration_entry_point_is_discoverable(
+    config_path: str, expected_heads: list[str]
+) -> None:
     script = ScriptDirectory.from_config(Config(config_path))
 
-    assert script.get_heads() == []
+    assert script.get_heads() == expected_heads

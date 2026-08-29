@@ -30,6 +30,7 @@ packages = ["src/platform_app", "src/pseudo_university_app"]
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers"
 testpaths = ["tests"]
+markers = ["integration: requires a PostgreSQL test database"]
 
 [tool.ruff]
 target-version = "py314"

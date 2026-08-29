@@ -18,10 +18,9 @@
 
 - **Branch:** `agent/e1-foundation`, derived from `conrad` at `6d97eee`.
 - **Feature:** `energy-leaderboard-platform`
-- **Current phase:** Execute, Wave 0.
-- **Completed task:** T001 — reproducible Python service foundation.
-- **Commit:** `build(platform): establish reproducible service foundation` (atomic commit created with this state update).
-- **Gate evidence:** `uv run ruff format --check .` passed for 32 files; `uv run ruff check .` passed; `uv run mypy src tests` passed for 24 source files; `uv run pytest` passed 5 tests.
-- **Migration evidence:** Both Alembic entry points completed an offline `upgrade head --sql` smoke run.
-- **Implementation scope:** Package/configuration foundations, module-boundary skeletons, independent migration entry points, dependency lock, and smoke tests only; no feature behavior was introduced.
-- **Next step:** Tech Lead integrates T001 into `conrad`, runs the cumulative gate, then releases T002, T003, T005, and T014 according to dependency order.
+- **Current phase:** Execute, Wave 1.
+- **Completed tasks:** T001 — reproducible Python service foundation; T002 — tenant-aware persistence foundation.
+- **Commits:** `build(platform): establish reproducible service foundation`; `feat(identity): add tenant-aware persistence foundation` (created with this state update).
+- **T002 gate evidence:** PostgreSQL migration upgrade/downgrade/upgrade and `alembic check` passed; `ruff format --check` passed for 39 files; `ruff check` passed; `mypy src tests` passed for 30 source files; `pytest` passed 9 tests, including 4 PostgreSQL integration tests.
+- **Implementation scope:** Tenant, account, profile, role, and audit persistence; UUID/UTC/decimal/transaction conventions; deny-by-default tenant repository access; explicit audited platform-tenant override.
+- **Next step:** Execute T003 against the independently owned pseudo-university service and database.
