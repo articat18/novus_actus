@@ -96,6 +96,9 @@ model UniversityEmailDomain {
 
 model UserAccount {
   id        String        @id @default(uuid()) @map("_id")
+  email        String        @unique
+  name         String
+  passwordHash String        @map("password_hash")
   status    AccountStatus
   createdAt DateTime      @default(now()) @map("created_at")
   updatedAt DateTime      @updatedAt @map("updated_at")
