@@ -140,7 +140,7 @@ flowchart TD
   - **Gate:** Meter-auth security and integration tests pass.
   - **Commit:** `feat(ingestion): authenticate revocable meter credentials`
 
-- [ ] **T007 — Persist validated hourly batches idempotently**
+- [x] **T007 — Persist validated hourly batches idempotently**
   - **Owner:** Engineer 2
   - **Depends on:** T006
   - **Requirements:** REQ-ING-001, REQ-ING-002, REQ-NFR-001
